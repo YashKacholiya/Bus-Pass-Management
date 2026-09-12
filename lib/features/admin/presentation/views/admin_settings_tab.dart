@@ -42,7 +42,10 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
     final settings = ref.watch(settingsNotifierProvider);
     final authState = ref.watch(authControllerProvider);
     final user = authState.user;
-    final fbUser = FirebaseAuth.instance.currentUser;
+    User? fbUser;
+    try {
+      fbUser = FirebaseAuth.instance.currentUser;
+    } catch (_) {}
 
     final adminName = user?.fullName.isNotEmpty == true
         ? user!.fullName
@@ -182,7 +185,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                                   ),
                                   // Account Status Badge
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                     decoration: BoxDecoration(
                                       color: isEmailVerified
                                           ? const Color(0xFF10B981).withOpacity(0.12)
@@ -203,7 +206,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                                         ),
                                         const SizedBox(width: 4),
                                         Text(
-                                          isEmailVerified ? 'Active & Verified' : 'Pending Verification',
+                                          isEmailVerified ? 'Verified' : 'Pending',
                                           style: TextStyle(
                                             color: isEmailVerified
                                                 ? const Color(0xFF047857)
@@ -942,11 +945,12 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Edit Administrator Profile',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                        const Expanded(
+                          child: Text(
+                            'Edit Administrator Profile',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                          ),
                         ),
                         IconButton(
                           icon: const Icon(Icons.close, size: 20),
@@ -1621,9 +1625,10 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Report System Issue', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Expanded(
+                      child: Text('Report System Issue', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    ),
                     IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
                   ],
                 ),

@@ -102,35 +102,42 @@ void main() {
     expect(find.text('Session & Login Security'), findsOneWidget);
     expect(find.text('Last Sign-In Timestamp'), findsOneWidget);
 
-    // 6. Application Settings
+    // 6. Application Settings (scroll into view)
+    await tester.scrollUntilVisible(find.text('Application Settings'), 300);
     expect(find.text('Application Settings'), findsOneWidget);
     expect(find.text('ICEM Smart Bus Pass'), findsWidgets);
     expect(find.text('Clear Local Cache'), findsOneWidget);
 
     // 7. System Status
+    await tester.scrollUntilVisible(find.text('System Status'), 300);
     expect(find.text('System Status'), findsOneWidget);
     expect(find.text('Firebase Authentication'), findsOneWidget);
     expect(find.text('Cloud Firestore'), findsOneWidget);
 
     // 8. Admin Data Management
+    await tester.scrollUntilVisible(find.text('Admin Data Management'), 300);
     expect(find.text('Admin Data Management'), findsOneWidget);
     expect(find.text('Refresh Data'), findsOneWidget);
 
     // 9. About ICEM
+    await tester.scrollUntilVisible(find.text('About ICEM'), 300);
     expect(find.text('About ICEM'), findsOneWidget);
     expect(find.text('Indira College of Engineering & Management'), findsOneWidget);
 
     // 10. Help & Support
+    await tester.scrollUntilVisible(find.text('Help & Support'), 300);
     expect(find.text('Help & Support'), findsOneWidget);
     expect(find.text('Report an Issue'), findsOneWidget);
     expect(find.text('Admin FAQ'), findsOneWidget);
 
     // 11. Danger Zone
+    await tester.scrollUntilVisible(find.text('Danger Zone'), 300);
     expect(find.text('Danger Zone'), findsOneWidget);
     expect(find.text('Sign Out'), findsOneWidget);
     expect(find.text('Delete Account'), findsOneWidget);
 
-    // Test Edit Profile Dialog trigger
+    // Scroll back to top to test Edit Profile Dialog trigger
+    await tester.scrollUntilVisible(find.text('Edit Profile Details'), -300);
     await tester.tap(find.text('Edit Profile Details'));
     await tester.pumpAndSettle();
     expect(find.text('Edit Administrator Profile'), findsOneWidget);
