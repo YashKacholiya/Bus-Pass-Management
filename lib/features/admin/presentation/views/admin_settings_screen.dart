@@ -6,8 +6,9 @@ class AdminSettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: Row(
           children: [
@@ -18,21 +19,25 @@ class AdminSettingsScreen extends StatelessWidget {
               fit: BoxFit.contain,
             ),
             const SizedBox(width: 10),
-            const Text(
+            Text(
               'Settings',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF0F172A)),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                color: theme.colorScheme.onSurface,
+              ),
             ),
           ],
         ),
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        foregroundColor: const Color(0xFF0F172A),
+        backgroundColor: theme.colorScheme.surface,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: theme.colorScheme.onSurface,
         elevation: 0,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
           child: Container(
             height: 1,
-            color: const Color(0xFFF1F5F9),
+            color: theme.dividerColor,
           ),
         ),
       ),

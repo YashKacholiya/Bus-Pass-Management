@@ -69,26 +69,28 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
         ? _formatDate(createdDate)
         : 'Registered';
 
+    final theme = Theme.of(context);
+
     return Container(
-      color: const Color(0xFFF8FAFC),
+      color: theme.scaffoldBackgroundColor,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
         children: [
           // ── Header Title & Subtitle ──
-          const Text(
+          Text(
             'Console Settings',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF0F172A),
+              color: theme.colorScheme.onSurface,
               letterSpacing: -0.6,
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Manage administrator profile, application preferences, notifications, security, and system status.',
-            style: TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.4),
+            style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant, height: 1.4),
           ),
           const SizedBox(height: 20),
 
@@ -101,9 +103,9 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
+                  color: theme.brightness == Brightness.dark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
                 ),
                 child: Column(
                   children: [
@@ -148,18 +150,18 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                             children: [
                               Text(
                                 adminName,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 17,
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFF0F172A),
+                                  color: theme.colorScheme.onSurface,
                                 ),
                               ),
                               const SizedBox(height: 2),
                               Text(
                                 adminEmail,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 13,
-                                  color: Color(0xFF64748B),
+                                  color: theme.colorScheme.onSurfaceVariant,
                                 ),
                               ),
                               const SizedBox(height: 8),
@@ -226,7 +228,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                    Divider(height: 1, color: theme.dividerColor),
                     const SizedBox(height: 12),
                     // Detail fields
                     _ProfileInfoTile(label: 'Contact Number', value: adminMobile, icon: Icons.phone_rounded),
@@ -274,7 +276,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                 trailing: Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
+                    color: theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
@@ -308,7 +310,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                   ),
                 ),
               ),
-              const Divider(height: 24, color: Color(0xFFF1F5F9)),
+              Divider(height: 24, color: theme.dividerColor),
               _SettingsRow(
                 label: 'Compact UI Density',
                 subLabel: 'Tighten spacing and card margins for high-density information',
@@ -342,7 +344,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                 ),
               ),
               if (settings.notificationsEnabled) ...[
-                const Divider(height: 20, color: Color(0xFFF1F5F9)),
+                Divider(height: 20, color: theme.dividerColor),
                 _SettingsRow(
                   label: 'Application Updates',
                   subLabel: 'Alerts when system versions or features update',
@@ -354,7 +356,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                         .updateAppUpdatesEnabled(val),
                   ),
                 ),
-                const Divider(height: 20, color: Color(0xFFF1F5F9)),
+                Divider(height: 20, color: theme.dividerColor),
                 _SettingsRow(
                   label: 'New Bus Pass Applications',
                   subLabel: 'Instant alerts when a student submits a new pass request',
@@ -366,7 +368,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                         .updateNewApplicationsEnabled(val),
                   ),
                 ),
-                const Divider(height: 20, color: Color(0xFFF1F5F9)),
+                Divider(height: 20, color: theme.dividerColor),
                 _SettingsRow(
                   label: 'Payment Notifications',
                   subLabel: 'Alerts on student online transactions and receipt uploads',
@@ -378,7 +380,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                         .updatePaymentNotificationsEnabled(val),
                   ),
                 ),
-                const Divider(height: 20, color: Color(0xFFF1F5F9)),
+                Divider(height: 20, color: theme.dividerColor),
                 _SettingsRow(
                   label: 'Approval / Rejection Notifications',
                   subLabel: 'Track status dispatch to students and drivers',
@@ -390,7 +392,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                         .updatePassDecisionNotificationsEnabled(val),
                   ),
                 ),
-                const Divider(height: 20, color: Color(0xFFF1F5F9)),
+                Divider(height: 20, color: theme.dividerColor),
                 _SettingsRow(
                   label: 'System Notifications',
                   subLabel: 'Critical alerts, server health, and maintenance notices',
@@ -407,18 +409,18 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
+                  color: theme.brightness == Brightness.dark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
                 ),
                 child: Row(
-                  children: const [
-                    Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFF64748B)),
-                    SizedBox(width: 8),
+                  children: [
+                    Icon(Icons.info_outline_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'In-app alert indicators are active. Background push delivery requires Firebase Cloud Messaging (FCM) background service configuration.',
-                        style: TextStyle(fontSize: 11, color: Color(0xFF64748B), height: 1.3),
+                        style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant, height: 1.3),
                       ),
                     ),
                   ],
@@ -440,15 +442,15 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                 trailing: OutlinedButton(
                   onPressed: () => _openChangePasswordDialog(),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF0F172A),
-                    side: const BorderSide(color: Color(0xFFCBD5E1)),
+                    foregroundColor: theme.colorScheme.onSurface,
+                    side: BorderSide(color: theme.colorScheme.outline),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                   child: const Text('Update', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                 ),
               ),
-              const Divider(height: 24, color: Color(0xFFF1F5F9)),
+              Divider(height: 24, color: theme.dividerColor),
               _SettingsRow(
                 label: 'Password Reset Email',
                 subLabel: 'Send a secure recovery link directly to $adminEmail',
@@ -472,27 +474,27 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                 subLabel: 'Verified time of current authenticated session',
                 trailing: Text(
                   formattedLastSignIn,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF1E293B),
+                    color: theme.colorScheme.onSurface,
                   ),
                 ),
               ),
-              const Divider(height: 20, color: Color(0xFFF1F5F9)),
+              Divider(height: 20, color: theme.dividerColor),
               _SettingsRow(
                 label: 'Account Registration Date',
                 subLabel: 'Creation timestamp of admin credential',
                 trailing: Text(
                   formattedCreated,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF1E293B),
+                    color: theme.colorScheme.onSurface,
                   ),
                 ),
               ),
-              const Divider(height: 20, color: Color(0xFFF1F5F9)),
+              Divider(height: 20, color: theme.dividerColor),
               _SettingsRow(
                 label: 'Session Persistence',
                 subLabel: 'Automated token refresh on application restart',
@@ -525,42 +527,42 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
               _SettingsRow(
                 label: 'Application Name',
                 subLabel: 'Institutional mobility management system',
-                trailing: const Text(
+                trailing: Text(
                   'ICEM Smart Bus Pass',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface),
                 ),
               ),
-              const Divider(height: 20, color: Color(0xFFF1F5F9)),
+              Divider(height: 20, color: theme.dividerColor),
               _SettingsRow(
                 label: 'App Version & Build',
                 subLabel: 'Production mobile client release',
                 trailing: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
+                    color: theme.brightness == Brightness.dark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: theme.colorScheme.outlineVariant),
                   ),
                   child: Text(
                     'v${AppConstants.appVersion}+${AppConstants.buildNumber}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF475569),
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
               ),
-              const Divider(height: 20, color: Color(0xFFF1F5F9)),
+              Divider(height: 20, color: theme.dividerColor),
               _SettingsRow(
                 label: 'Deployment Environment',
                 subLabel: 'Indira College of Engineering & Management Production',
-                trailing: const Text(
+                trailing: Text(
                   'Production Console',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface),
                 ),
               ),
-              const Divider(height: 20, color: Color(0xFFF1F5F9)),
+              Divider(height: 20, color: theme.dividerColor),
               _SettingsRow(
                 label: 'Clear Local Cache',
                 subLabel: 'Safely clear local app preferences without affecting database records',
@@ -593,7 +595,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                   isOk: fbUser != null,
                 ),
               ),
-              const Divider(height: 20, color: Color(0xFFF1F5F9)),
+              Divider(height: 20, color: theme.dividerColor),
               _SettingsRow(
                 label: 'Cloud Firestore',
                 subLabel: 'Real-time database sync and rules enforcement',
@@ -602,7 +604,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                   isOk: _firestoreStatus == 'Operational',
                 ),
               ),
-              const Divider(height: 20, color: Color(0xFFF1F5F9)),
+              Divider(height: 20, color: theme.dividerColor),
               _SettingsRow(
                 label: 'Cloud Connection Test',
                 subLabel: 'Perform real-time round-trip latency check',
@@ -649,7 +651,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                   onPressed: _isRefreshingData ? null : _refreshDashboardData,
                 ),
               ),
-              const Divider(height: 20, color: Color(0xFFF1F5F9)),
+              Divider(height: 20, color: theme.dividerColor),
               _SettingsRow(
                 label: 'Synchronize Preferences',
                 subLabel: 'Merge local cache settings with Firestore user document',
@@ -684,12 +686,12 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                     height: 50,
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: theme.colorScheme.surface,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      border: Border.all(color: theme.colorScheme.outlineVariant),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
+                          color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.2 : 0.04),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -704,19 +706,19 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
+                      children: [
                         Text(
                           'Indira College of Engineering & Management',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF0F172A),
+                            color: theme.colorScheme.onSurface,
                           ),
                         ),
-                        SizedBox(height: 2),
+                        const SizedBox(height: 2),
                         Text(
                           'Parandwadi, Pune 410507 • AICTE Approved',
-                          style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                          style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
                         ),
                       ],
                     ),
@@ -724,9 +726,9 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                 ],
               ),
               const SizedBox(height: 14),
-              const Text(
+              Text(
                 'ICEM Smart Bus Pass is an institutional transport management system designed for secure bus pass generation, route optimization, real-time tracking, and automated student verification.',
-                style: TextStyle(fontSize: 12, color: Color(0xFF475569), height: 1.4),
+                style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant, height: 1.4),
               ),
               const SizedBox(height: 14),
               Row(
@@ -735,8 +737,8 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                     child: OutlinedButton(
                       onPressed: () => _openPrivacyPolicyModal(),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF475569),
-                        side: const BorderSide(color: Color(0xFFCBD5E1)),
+                        foregroundColor: theme.colorScheme.onSurface,
+                        side: BorderSide(color: theme.colorScheme.outline),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         padding: const EdgeInsets.symmetric(vertical: 8),
                       ),
@@ -748,8 +750,8 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                     child: OutlinedButton(
                       onPressed: () => _openTermsModal(),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF475569),
-                        side: const BorderSide(color: Color(0xFFCBD5E1)),
+                        foregroundColor: theme.colorScheme.onSurface,
+                        side: BorderSide(color: theme.colorScheme.outline),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         padding: const EdgeInsets.symmetric(vertical: 8),
                       ),
@@ -771,21 +773,21 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
+                  color: theme.brightness == Brightness.dark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
+                  children: [
                     Text(
                       'Central Transport Office',
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF0F172A)),
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: theme.colorScheme.onSurface),
                     ),
-                    SizedBox(height: 4),
-                    Text('Email: transport@indiraicem.ac.in', style: TextStyle(fontSize: 12, color: Color(0xFF475569))),
-                    Text('Helpline: +91 2114 661500 / +91 95525 21000', style: TextStyle(fontSize: 12, color: Color(0xFF475569))),
-                    Text('Office Hours: Monday - Saturday, 8:30 AM - 5:00 PM', style: TextStyle(fontSize: 12, color: Color(0xFF475569))),
+                    const SizedBox(height: 4),
+                    Text('Email: transport@indiraicem.ac.in', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+                    Text('Helpline: +91 2114 661500 / +91 95525 21000', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+                    Text('Office Hours: Monday - Saturday, 8:30 AM - 5:00 PM', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
                   ],
                 ),
               ),
@@ -797,7 +799,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                       icon: const Icon(Icons.report_problem_outlined, size: 15),
                       label: const Text('Report an Issue', style: TextStyle(fontSize: 12)),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0F172A),
+                        backgroundColor: AppColors.primaryCrimson,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -811,8 +813,8 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                       icon: const Icon(Icons.question_answer_outlined, size: 15),
                       label: const Text('Admin FAQ', style: TextStyle(fontSize: 12)),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF0F172A),
-                        side: const BorderSide(color: Color(0xFFCBD5E1)),
+                        foregroundColor: theme.colorScheme.onSurface,
+                        side: BorderSide(color: theme.colorScheme.outline),
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
@@ -829,7 +831,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: theme.colorScheme.surface,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: const Color(0xFFFCA5A5), width: 1.2),
               boxShadow: [
@@ -882,7 +884,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                     child: const Text('Sign Out', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                   ),
                 ),
-                const Divider(height: 24, color: Color(0xFFFEE2E2)),
+                Divider(height: 24, color: theme.dividerColor),
                 _SettingsRow(
                   label: 'Delete Admin Account',
                   subLabel: 'Permanently revoke your administrator account credentials',
@@ -922,10 +924,11 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
     bool isLoading = false;
     String? errorText;
 
+    final theme = Theme.of(context);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: theme.colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -946,22 +949,22 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                   children: [
                     Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
                             'Edit Administrator Profile',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.close, size: 20),
+                          icon: Icon(Icons.close, size: 20, color: theme.colorScheme.onSurface),
                           onPressed: () => Navigator.pop(ctx),
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'Changes are saved directly to your Firestore administrator profile.',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
                     ),
                     const SizedBox(height: 16),
                     if (errorText != null) ...[
@@ -977,6 +980,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                     ],
                     TextField(
                       controller: nameController,
+                      style: TextStyle(color: theme.colorScheme.onSurface),
                       decoration: const InputDecoration(
                         labelText: 'Full Name *',
                         prefixIcon: Icon(Icons.person_outline, size: 20),
@@ -987,6 +991,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                     TextField(
                       controller: mobileController,
                       keyboardType: TextInputType.phone,
+                      style: TextStyle(color: theme.colorScheme.onSurface),
                       decoration: const InputDecoration(
                         labelText: 'Contact Phone Number',
                         prefixIcon: Icon(Icons.phone_outlined, size: 20),
@@ -996,6 +1001,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: deptController,
+                      style: TextStyle(color: theme.colorScheme.onSurface),
                       decoration: const InputDecoration(
                         labelText: 'Department / Section',
                         prefixIcon: Icon(Icons.domain_outlined, size: 20),
@@ -1085,25 +1091,26 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
     showDialog(
       context: context,
       builder: (ctx) {
+        final theme = Theme.of(ctx);
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              backgroundColor: Colors.white,
+              backgroundColor: theme.colorScheme.surface,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
               title: Row(
-                children: const [
-                  Icon(Icons.lock_reset_rounded, color: AppColors.primaryCrimson),
-                  SizedBox(width: 8),
-                  Text('Change Password', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                children: [
+                  const Icon(Icons.lock_reset_rounded, color: AppColors.primaryCrimson),
+                  const SizedBox(width: 8),
+                  Text('Change Password', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
                 ],
               ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text(
+                    Text(
                       'For security, verify your current password before creating a new password.',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
                     ),
                     const SizedBox(height: 14),
                     if (errorText != null) ...[
@@ -1120,6 +1127,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                     TextField(
                       controller: currentPwdController,
                       obscureText: obscureCurrent,
+                      style: TextStyle(color: theme.colorScheme.onSurface),
                       decoration: InputDecoration(
                         labelText: 'Current Password',
                         isDense: true,
@@ -1134,6 +1142,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                     TextField(
                       controller: newPwdController,
                       obscureText: obscureNew,
+                      style: TextStyle(color: theme.colorScheme.onSurface),
                       decoration: InputDecoration(
                         labelText: 'New Password (min 8 chars)',
                         isDense: true,
@@ -1148,6 +1157,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                     TextField(
                       controller: confirmPwdController,
                       obscureText: obscureConfirm,
+                      style: TextStyle(color: theme.colorScheme.onSurface),
                       decoration: InputDecoration(
                         labelText: 'Confirm New Password',
                         isDense: true,
@@ -1265,39 +1275,42 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
   void _confirmClearCache() {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Clear Local Cache?', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text(
-          'This action clears only temporary local client preferences. It will NOT delete any Firebase data, users, bus routes, buses, drivers, payments, or applications.',
-          style: TextStyle(fontSize: 13, height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return AlertDialog(
+          backgroundColor: theme.colorScheme.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text('Clear Local Cache?', style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+          content: Text(
+            'This action clears only temporary local client preferences. It will NOT delete any Firebase data, users, bus routes, buses, drivers, payments, or applications.',
+            style: TextStyle(fontSize: 13, height: 1.4, color: theme.colorScheme.onSurfaceVariant),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFD97706),
-              foregroundColor: Colors.white,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
             ),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await ref.read(settingsNotifierProvider.notifier).clearLocalCache();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Local client preferences cache cleared successfully.'),
-                  backgroundColor: Color(0xFF10B981),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            },
-            child: const Text('Clear Cache'),
-          ),
-        ],
-      ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFD97706),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await ref.read(settingsNotifierProvider.notifier).clearLocalCache();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Local client preferences cache cleared successfully.'),
+                    backgroundColor: Color(0xFF10B981),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+              child: const Text('Clear Cache'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1371,26 +1384,29 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
   Future<void> _confirmSignOut() async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Sign Out', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text('Are you sure you want to end your current administrator session?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return AlertDialog(
+          backgroundColor: theme.colorScheme.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text('Sign Out', style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+          content: Text('Are you sure you want to end your current administrator session?', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
             ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Sign Out'),
-          ),
-        ],
-      ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Sign Out'),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirm == true) {
@@ -1407,10 +1423,11 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
     showDialog(
       context: context,
       builder: (ctx) {
+        final theme = Theme.of(ctx);
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              backgroundColor: Colors.white,
+              backgroundColor: theme.colorScheme.surface,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
               title: Row(
                 children: const [
@@ -1428,9 +1445,9 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                       style: TextStyle(fontSize: 12, color: Color(0xFF7F1D1D), height: 1.4),
                     ),
                     const SizedBox(height: 14),
-                    const Text(
+                    Text(
                       'Enter your current administrator password to confirm deletion:',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface),
                     ),
                     const SizedBox(height: 10),
                     if (errorText != null) ...[
@@ -1447,6 +1464,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                     TextField(
                       controller: pwdController,
                       obscureText: true,
+                      style: TextStyle(color: theme.colorScheme.onSurface),
                       decoration: const InputDecoration(
                         labelText: 'Administrator Password',
                         isDense: true,
@@ -1513,10 +1531,11 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
 
   /// 10. Privacy Policy Modal
   void _openPrivacyPolicyModal() {
+    final theme = Theme.of(context);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: theme.colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1529,14 +1548,14 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: ListView(
             controller: scrollController,
-            children: const [
+            children: [
               Text(
                 'Privacy Policy',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
               ),
-              SizedBox(height: 8),
-              Text('Effective Date: Academic Year 2026-2027', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-              SizedBox(height: 16),
+              const SizedBox(height: 8),
+              Text('Effective Date: Academic Year 2026-2027', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+              const SizedBox(height: 16),
               Text(
                 '1. Data Collection & Purpose\n'
                 'The ICEM Smart Bus Pass system collects student information (PRN, Full Name, Contact Number, Academic Year, Route Stop) and payment details solely for the verification and issuance of institutional transportation passes.\n\n'
@@ -1546,7 +1565,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                 'Real-time vehicle GPS coordinates are collected from driver devices during active scheduled trips to enable safe fleet tracking and student arrival alerts.\n\n'
                 '4. Data Retention & Security\n'
                 'All records are stored securely in Google Cloud Firestore with strict security rules. Pass records are maintained for institutional audit and academic term reconciliation only.',
-                style: TextStyle(fontSize: 13, color: Color(0xFF334155), height: 1.5),
+                style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant, height: 1.5),
               ),
             ],
           ),
@@ -1557,10 +1576,11 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
 
   /// 10b. Terms & Conditions Modal
   void _openTermsModal() {
+    final theme = Theme.of(context);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: theme.colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1573,14 +1593,14 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: ListView(
             controller: scrollController,
-            children: const [
+            children: [
               Text(
                 'Terms & Conditions of Transport',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
               ),
-              SizedBox(height: 8),
-              Text('Indira College of Engineering & Management', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-              SizedBox(height: 16),
+              const SizedBox(height: 8),
+              Text('Indira College of Engineering & Management', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+              const SizedBox(height: 16),
               Text(
                 '1. Pass Validity\n'
                 'The digital bus pass is non-transferable and valid exclusively for the student whose PRN and photograph appear on the credential.\n\n'
@@ -1590,7 +1610,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                 'Bus passes are allocated to specific routes and boarding points. Changing pickup points requires prior administrative approval via the console.\n\n'
                 '4. Code of Conduct\n'
                 'Students must maintain discipline while traveling. Misbehavior or damage to college buses will lead to immediate cancellation of transport privileges.',
-                style: TextStyle(fontSize: 13, color: Color(0xFF334155), height: 1.5),
+                style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant, height: 1.5),
               ),
             ],
           ),
@@ -1603,11 +1623,12 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
   void _openReportIssueDialog() {
     final issueController = TextEditingController();
     String category = 'Bus Route Discrepancy';
+    final theme = Theme.of(context);
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: theme.colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1626,17 +1647,19 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
               children: [
                 Row(
                   children: [
-                    const Expanded(
-                      child: Text('Report System Issue', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    Expanded(
+                      child: Text('Report System Issue', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
                     ),
-                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+                    IconButton(icon: Icon(Icons.close, color: theme.colorScheme.onSurface), onPressed: () => Navigator.pop(ctx)),
                   ],
                 ),
                 const SizedBox(height: 8),
-                const Text('Describe the operational issue for the ICEM technical support team:', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                Text('Describe the operational issue for the ICEM technical support team:', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
                 const SizedBox(height: 14),
                 DropdownButtonFormField<String>(
                   value: category,
+                  dropdownColor: theme.colorScheme.surface,
+                  style: TextStyle(color: theme.colorScheme.onSurface),
                   decoration: const InputDecoration(labelText: 'Issue Category', border: OutlineInputBorder()),
                   items: const [
                     DropdownMenuItem(value: 'Bus Route Discrepancy', child: Text('Bus Route Discrepancy')),
@@ -1653,6 +1676,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                 TextField(
                   controller: issueController,
                   maxLines: 4,
+                  style: TextStyle(color: theme.colorScheme.onSurface),
                   decoration: const InputDecoration(
                     labelText: 'Details / Description',
                     hintText: 'Enter specific bus number, route, PRN, or error encountered...',
@@ -1692,10 +1716,11 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
 
   /// 11b. Admin FAQ Modal
   void _openFaqModal() {
+    final theme = Theme.of(context);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: theme.colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1708,10 +1733,10 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: ListView(
             controller: scrollController,
-            children: const [
+            children: [
               Text(
                 'Administrator FAQs',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
               ),
               SizedBox(height: 12),
               _FaqAccordionTile(
@@ -1755,21 +1780,22 @@ class _ProfileInfoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Row(
       children: [
-        Icon(icon, size: 15, color: const Color(0xFF64748B)),
+        Icon(icon, size: 15, color: theme.colorScheme.onSurfaceVariant),
         const SizedBox(width: 8),
         Text(
           '$label: ',
-          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+          style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
         ),
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF1E293B),
+              color: theme.colorScheme.onSurface,
             ),
             overflow: TextOverflow.ellipsis,
           ),
@@ -1794,18 +1820,19 @@ class _ThemePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : Colors.transparent,
+          color: isSelected ? theme.colorScheme.surface : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.06),
+                    color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.2 : 0.06),
                     blurRadius: 4,
                     offset: const Offset(0, 1),
                   ),
@@ -1818,7 +1845,7 @@ class _ThemePill extends StatelessWidget {
             Icon(
               icon,
               size: 13,
-              color: isSelected ? AppColors.primaryCrimson : const Color(0xFF64748B),
+              color: isSelected ? AppColors.primaryCrimson : theme.colorScheme.onSurfaceVariant,
             ),
             const SizedBox(width: 4),
             Text(
@@ -1826,7 +1853,7 @@ class _ThemePill extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? AppColors.primaryCrimson : const Color(0xFF64748B),
+                color: isSelected ? AppColors.primaryCrimson : theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -1884,18 +1911,19 @@ class _FaqAccordionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return ExpansionTile(
       tilePadding: EdgeInsets.zero,
       title: Text(
         question,
-        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface),
       ),
       children: [
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Text(
             answer,
-            style: const TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
+            style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant, height: 1.4),
           ),
         ),
       ],
@@ -1919,15 +1947,16 @@ class _SettingsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFF1F5F9)),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.2 : 0.02),
             blurRadius: 14,
             offset: const Offset(0, 4),
           ),
@@ -1951,10 +1980,10 @@ class _SettingsSection extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
+                    color: theme.colorScheme.onSurface,
                   ),
                 ),
               ),
@@ -1982,6 +2011,7 @@ class _SettingsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -1993,9 +2023,9 @@ class _SettingsRow extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
-                    color: Color(0xFF1E293B),
+                    color: theme.colorScheme.onSurface,
                     fontWeight: FontWeight.w500,
                   ),
                   maxLines: 2,
@@ -2005,9 +2035,9 @@ class _SettingsRow extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     subLabel!,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
-                      color: Color(0xFF64748B),
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,

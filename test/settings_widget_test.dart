@@ -176,4 +176,79 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
   });
+
+  testWidgets('Theme switching changes global settings and persists to StorageService', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(400, 1200);
+    tester.view.devicePixelRatio = 1.0;
+
+    SharedPreferences.setMockInitialValues({'theme_mode': 'system'});
+    final sharedPreferences = await SharedPreferences.getInstance();
+    final storageService = StorageService(sharedPreferences);
+
+    late WidgetRef capturedRef;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          storageServiceProvider.overrideWithValue(storageService),
+          authControllerProvider.overrideWith(() => FakeAuthController()),
+        ],
+        child: Consumer(
+          builder: (context, ref, child) {
+            capturedRef = ref;
+            final settings = ref.watch(settingsNotifierProvider);
+            return MaterialApp(
+              theme: ThemeData.light(),
+              darkTheme: ThemeData.dark(),
+              themeMode: settings.themeMode,
+              home: const Scaffold(
+                body: AdminSettingsTab(),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // Initial state should be System
+    expect(capturedRef.read(settingsNotifierProvider).themeMode, equals(ThemeMode.system));
+
+    // Tap "Dark" pill
+    final darkPillFinder = find.widgetWithText(InkWell, 'Dark');
+    expect(darkPillFinder, findsOneWidget);
+    await tester.tap(darkPillFinder);
+    await tester.pumpAndSettle();
+
+    // Verify Riverpod state updated to Dark
+    expect(capturedRef.read(settingsNotifierProvider).themeMode, equals(ThemeMode.dark));
+    // Verify persisted in storage
+    expect(storageService.getString('themeMode'), equals('dark'));
+
+    // Tap "Light" pill
+    final lightPillFinder = find.widgetWithText(InkWell, 'Light');
+    expect(lightPillFinder, findsOneWidget);
+    await tester.tap(lightPillFinder);
+    await tester.pumpAndSettle();
+
+    // Verify Riverpod state updated to Light
+    expect(capturedRef.read(settingsNotifierProvider).themeMode, equals(ThemeMode.light));
+    // Verify persisted in storage
+    expect(storageService.getString('themeMode'), equals('light'));
+
+    // Tap "System" pill
+    final systemPillFinder = find.widgetWithText(InkWell, 'System');
+    expect(systemPillFinder, findsOneWidget);
+    await tester.tap(systemPillFinder);
+    await tester.pumpAndSettle();
+
+    // Verify Riverpod state updated to System
+    expect(capturedRef.read(settingsNotifierProvider).themeMode, equals(ThemeMode.system));
+    // Verify persisted in storage
+    expect(storageService.getString('themeMode'), equals('system'));
+
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+  });
 }

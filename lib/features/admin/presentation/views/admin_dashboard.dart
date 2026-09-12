@@ -60,7 +60,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
         context.go(AppRoutes.studentDashboard);
       });
       return Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
+        backgroundColor: theme.scaffoldBackgroundColor,
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24.0),
@@ -73,14 +73,14 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 Text(
                   'Access Denied',
                   style: theme.textTheme.headlineMedium?.copyWith(
-                    color: const Color(0xFF0F172A),
+                    color: theme.colorScheme.onSurface,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   'Only Administrators are authorized to view this management console.',
-                  style: TextStyle(color: Color(0xFF475569)),
+                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -94,11 +94,11 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: isMobile && currentTab != 2 && currentTab != 3
           ? AppBar(
-              backgroundColor: Colors.white,
-              surfaceTintColor: Colors.white,
+              backgroundColor: theme.colorScheme.surface,
+              surfaceTintColor: Colors.transparent,
               title: Row(
                 children: [
                   Image.asset(
@@ -111,10 +111,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                   Expanded(
                     child: Text(
                       _getTabTitle(currentTab),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 18,
-                        color: Color(0xFF0F172A),
+                        color: theme.colorScheme.onSurface,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -122,7 +122,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 ],
               ),
               leading: IconButton(
-                icon: const Icon(Icons.menu_rounded, color: Color(0xFF0F172A)),
+                icon: Icon(Icons.menu_rounded, color: theme.colorScheme.onSurface),
                 onPressed: () {
                   _scaffoldKey.currentState?.openDrawer();
                 },
@@ -139,14 +139,14 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 preferredSize: const Size.fromHeight(1),
                 child: Container(
                   height: 1,
-                  color: const Color(0xFFF1F5F9),
+                  color: theme.dividerColor,
                 ),
               ),
             )
           : null,
       drawer: isMobile
           ? Drawer(
-              backgroundColor: Colors.white,
+              backgroundColor: theme.colorScheme.surface,
               child: _buildSidebarContent(context, ref, currentTab,
                   isMobile: true),
             )
@@ -159,20 +159,20 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               SizedBox(
                 width: 260,
                 child: Container(
-                  color: Colors.white,
+                  color: theme.colorScheme.surface,
                   child: _buildSidebarContent(context, ref, currentTab,
                       isMobile: false),
                 ),
               ),
               Container(
                 width: 1,
-                color: const Color(0xFFF1F5F9),
+                color: theme.dividerColor,
               ),
             ],
             // ── Main Content ──
             Expanded(
               child: Container(
-                color: const Color(0xFFF8FAFC),
+                color: theme.scaffoldBackgroundColor,
                 child: Column(
                   children: [
                     if (!isMobile) _buildDesktopHeader(context, user.fullName),
@@ -247,13 +247,14 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   // ── Desktop Header ──
   Widget _buildDesktopHeader(BuildContext context, String adminName) {
     final currentTab = ref.watch(adminTabProvider);
+    final theme = Theme.of(context);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 18.0),
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
         border: Border(
-          bottom: BorderSide(color: Color(0xFFF1F5F9)),
+          bottom: BorderSide(color: theme.dividerColor),
         ),
       ),
       child: Row(
@@ -271,7 +272,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  const Text(
                     'ICEM Transport Office',
                     style: TextStyle(
                       color: AppColors.accentGold,
@@ -283,10 +284,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                   const SizedBox(height: 4),
                   Text(
                     _getTabTitle(currentTab),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F172A),
+                      color: theme.colorScheme.onSurface,
                     ),
                   ),
                 ],
@@ -309,8 +310,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                     const SizedBox(width: 8),
                     Text(
                       adminName,
-                      style: const TextStyle(
-                        color: Color(0xFF0F172A),
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface,
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
                       ),
@@ -346,6 +347,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     int currentTab, {
     required bool isMobile,
   }) {
+    final theme = Theme.of(context);
     final sidebarItems = [
       _SidebarItem(0, 'Dashboard', Icons.dashboard_rounded),
       _SidebarItem(1, 'Applications', Icons.badge_rounded),
@@ -413,10 +415,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                             ),
                           ),
                           const SizedBox(height: 2),
-                          const Text(
+                          Text(
                             'Admin Console',
                             style: TextStyle(
-                              color: Color(0xFF94A3B8),
+                              color: theme.colorScheme.onSurfaceVariant,
                               fontSize: 11,
                               fontWeight: FontWeight.w500,
                             ),
@@ -424,7 +426,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                         ],
                       ),
                     ),
-                    Container(height: 1, color: const Color(0xFFF1F5F9)),
+                    Container(height: 1, color: theme.dividerColor),
                     const SizedBox(height: 8),
 
                     // ── Nav Items ──
@@ -461,7 +463,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                                         size: 20,
                                         color: isSelected
                                             ? AppColors.primaryCrimson
-                                            : const Color(0xFF64748B),
+                                            : theme.colorScheme.onSurfaceVariant,
                                       ),
                                       const SizedBox(width: 14),
                                       Expanded(
@@ -470,7 +472,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                                           style: TextStyle(
                                             color: isSelected
                                                 ? AppColors.primaryCrimson
-                                                : const Color(0xFF334155),
+                                                : theme.colorScheme.onSurface,
                                             fontWeight: isSelected
                                                 ? FontWeight.w700
                                                 : FontWeight.w500,
@@ -500,7 +502,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                     const Spacer(),
 
                     // ── Logout Button ──
-                    Container(height: 1, color: const Color(0xFFF1F5F9)),
+                    Container(height: 1, color: theme.dividerColor),
                     Padding(
                       padding: const EdgeInsets.all(12),
                       child: Material(

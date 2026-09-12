@@ -137,21 +137,38 @@ class SettingsNotifier extends Notifier<SettingsState> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
       
+      final storage = ref.read(storageServiceProvider);
+      final localTheme = storage.getString('themeMode');
+
       final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       if (doc.exists && doc.data() != null && doc.data()!.containsKey('preferences')) {
         final prefs = doc.data()!['preferences'] as Map<String, dynamic>;
         
-        final theme = prefs['themeMode'] as String? ?? 'system';
-        final accent = prefs['accentColor'] as String? ?? 'crimson';
-        final lang = prefs['language'] as String? ?? 'english';
-        final compact = prefs['isCompactDensity'] as bool? ?? false;
-        final notif = prefs['notificationsEnabled'] as bool? ?? true;
-        final expiry = prefs['passExpiryReminderEnabled'] as bool? ?? true;
-        final appUp = prefs['appUpdatesEnabled'] as bool? ?? true;
-        final newApp = prefs['newApplicationsEnabled'] as bool? ?? true;
-        final payNotif = prefs['paymentNotificationsEnabled'] as bool? ?? true;
-        final decNotif = prefs['passDecisionNotificationsEnabled'] as bool? ?? true;
-        final sysNotif = prefs['systemNotificationsEnabled'] as bool? ?? true;
+        final firestoreTheme = prefs['themeMode'] as String?;
+        // If local theme was explicitly set by user, don't let a null or default 'system' overwrite it
+        String theme;
+        if (localTheme != null && localTheme.isNotEmpty && localTheme != 'system') {
+          if (firestoreTheme != null && firestoreTheme.isNotEmpty && firestoreTheme != 'system') {
+            theme = firestoreTheme;
+          } else {
+            theme = localTheme;
+            // Push local theme to Firestore
+            await _syncToFirestore();
+          }
+        } else {
+          theme = firestoreTheme ?? localTheme ?? 'system';
+        }
+
+        final accent = prefs['accentColor'] as String? ?? storage.getString('accentColor') ?? 'crimson';
+        final lang = prefs['language'] as String? ?? storage.getString('language') ?? 'english';
+        final compact = prefs['isCompactDensity'] as bool? ?? storage.getBool('isCompactDensity') ?? false;
+        final notif = prefs['notificationsEnabled'] as bool? ?? storage.getBool('notificationsEnabled') ?? true;
+        final expiry = prefs['passExpiryReminderEnabled'] as bool? ?? storage.getBool('passExpiryReminderEnabled') ?? true;
+        final appUp = prefs['appUpdatesEnabled'] as bool? ?? storage.getBool('appUpdatesEnabled') ?? true;
+        final newApp = prefs['newApplicationsEnabled'] as bool? ?? storage.getBool('newApplicationsEnabled') ?? true;
+        final payNotif = prefs['paymentNotificationsEnabled'] as bool? ?? storage.getBool('paymentNotificationsEnabled') ?? true;
+        final decNotif = prefs['passDecisionNotificationsEnabled'] as bool? ?? storage.getBool('passDecisionNotificationsEnabled') ?? true;
+        final sysNotif = prefs['systemNotificationsEnabled'] as bool? ?? storage.getBool('systemNotificationsEnabled') ?? true;
 
         state = SettingsState(
           themeMode: _parseThemeMode(theme),
@@ -167,7 +184,6 @@ class SettingsNotifier extends Notifier<SettingsState> {
           systemNotificationsEnabled: sysNotif,
         );
 
-        final storage = ref.read(storageServiceProvider);
         await storage.setString('themeMode', theme);
         await storage.setString('accentColor', accent);
         await storage.setString('language', lang);
@@ -179,6 +195,8 @@ class SettingsNotifier extends Notifier<SettingsState> {
         await storage.setBool('paymentNotificationsEnabled', payNotif);
         await storage.setBool('passDecisionNotificationsEnabled', decNotif);
         await storage.setBool('systemNotificationsEnabled', sysNotif);
+      } else {
+        await _syncToFirestore();
       }
     } catch (_) {}
   }
