@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "924572816848",
+    "project_id": "icem-bus",
+    "storage_bucket": "icem-bus.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:924572816848:android:a62a90c1a5b188fa24d5d5",
+        "android_client_info": {
+          "package_name": "com.icem.bus.icem_bus"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBI9aeUrqK0MB1w7dKaCfl4YUL_PtjP6U0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
