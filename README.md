@@ -1,16 +1,25 @@
-# icem_bus
+# Bus Pass Management System
 
-A new Flutter project.
+A Flutter application for managing bus passes at ICEM college.
+
+## Features
+
+- Student registration and authentication
+- Bus pass application and management
+- QR code-based pass verification
+- UPI / QR payment integration
+- Admin dashboard with charts and reports
+- Staff and driver management
+- Firestore-backed real-time data
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+This project is built with Flutter. To run locally:
 
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```bash
+flutter pub get
+flutter run
+```
 
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
