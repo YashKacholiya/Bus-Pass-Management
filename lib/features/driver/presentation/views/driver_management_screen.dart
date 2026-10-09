@@ -785,7 +785,7 @@ class _DriverFormSheetState extends ConsumerState<_DriverFormSheet> {
 
   Future<void> _pickPhoto() async {
     // Request permission (may require adjust for Android 13+)
-    final status = await Permission.photos.request();
+    await Permission.photos.request();
     // Proceed regardless of status to test on emulators, or handle appropriately
     
     final picker = ImagePicker();

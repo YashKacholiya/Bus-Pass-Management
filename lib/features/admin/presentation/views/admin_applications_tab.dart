@@ -92,7 +92,7 @@ class _AdminApplicationsTabState extends ConsumerState<AdminApplicationsTab> {
                   final app = filtered[i];
                   return AdminApplicationCard(
                     application: app,
-                    onApprove: () => _confirmApprove(repo, app['id']),
+                    onApprove: () => _confirmApprove(repo, app['id'], app['paymentStatus']),
                     onReject: () => _showRejectDialog(repo, app['id']),
                     onViewDetails: () => _navigateToDetail(app['id']),
                   );
@@ -111,14 +111,25 @@ class _AdminApplicationsTabState extends ConsumerState<AdminApplicationsTab> {
   }
 
   /// Approve with confirmation — includes admin UID
-  void _confirmApprove(AdminRepository repo, String applicationId) {
+  void _confirmApprove(AdminRepository repo, String applicationId, [dynamic paymentStatus]) {
+    final pStatus = (paymentStatus ?? '').toString().trim().toLowerCase();
+    if (pStatus.isNotEmpty && pStatus != 'paid' && pStatus != 'success') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Payment required before approval. Student must complete verified payment first.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Approve Application'),
         content: const Text(
-            'Are you sure you want to approve this bus pass application? A unique Pass ID will be generated.'),
+            'Are you sure you want to approve this bus pass application? A unique Pass ID will be generated and digital pass activated.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -143,7 +154,7 @@ class _AdminApplicationsTabState extends ConsumerState<AdminApplicationsTab> {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('Error: $e'),
+                      content: Text('$e'),
                       backgroundColor: AppColors.error,
                     ),
                   );

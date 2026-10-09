@@ -29,7 +29,7 @@ class UserModel extends UserEntity {
       uid: map['uid'] as String? ?? '',
       fullName: map['fullName'] as String? ?? '',
       email: map['email'] as String? ?? '',
-      role: map['role'] as String? ?? '',
+      role: UserEntity.normalizeRole(map['role'] as String?),
       photoUrl: map['photoUrl'] as String?,
       isEmailVerified: map['isEmailVerified'] as bool? ?? false,
       createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),

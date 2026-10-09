@@ -120,35 +120,45 @@ class StaffDashboardScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              GlassCard(
-                blur: 16,
-                borderColor: AppColors.accentGold,
-                opacity: 0.08,
-                color: AppColors.secondaryDark,
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  children: [
-                    const Icon(
-                      Icons.qr_code_scanner_rounded,
-                      color: AppColors.accentGold,
-                      size: 64,
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      'SCAN STUDENT PASS',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.0,
+              InkWell(
+                onTap: () => context.push(AppRoutes.qrVerification),
+                borderRadius: BorderRadius.circular(16),
+                child: GlassCard(
+                  blur: 16,
+                  borderColor: AppColors.accentGold,
+                  opacity: 0.12,
+                  color: AppColors.secondaryDark,
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    children: [
+                      const Icon(
+                        Icons.qr_code_scanner_rounded,
+                        color: AppColors.accentGold,
+                        size: 64,
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Ready to scan and verify student QR codes for boarding authorization.',
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      Text(
+                        'SCAN STUDENT PASS',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Tap to launch camera scanner and verify student bus passes in real-time.',
+                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      PrimaryButton(
+                        text: 'Launch Scanner',
+                        icon: Icons.camera_alt_rounded,
+                        onPressed: () => context.push(AppRoutes.qrVerification),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 32),

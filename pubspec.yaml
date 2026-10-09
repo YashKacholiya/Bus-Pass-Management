@@ -54,6 +54,8 @@ dependencies:
   path_provider: ^2.1.6
   share_plus: ^13.3.0
   equatable: ^2.1.0
+  razorpay_flutter: ^1.4.7
+  mobile_scanner: ^7.4.2
 
 dev_dependencies:
   flutter_test:
@@ -81,6 +83,7 @@ flutter:
 
   assets:
     - assets/images/bus_logo.png
+    - assets/images/college_upi_qr.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

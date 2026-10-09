@@ -10,7 +10,8 @@ import 'package:icem_bus/features/admin/domain/admin_providers.dart';
 import 'package:icem_bus/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:icem_bus/features/driver/domain/driver_providers.dart';
 import 'package:icem_bus/services/storage/storage_service.dart';
-
+import 'package:icem_bus/features/payment/data/models/payment_config_model.dart';
+import 'package:icem_bus/features/payment/data/repositories/payment_config_repository.dart';
 /// Settings tab for admin preferences — pure scrollable content widget (no inner Scaffold)
 class AdminSettingsTab extends ConsumerStatefulWidget {
   const AdminSettingsTab({super.key});
@@ -20,9 +21,22 @@ class AdminSettingsTab extends ConsumerStatefulWidget {
 }
 
 class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
+  late final ScrollController _scrollController;
   bool _isRefreshingData = false;
   bool _isCheckingStatus = false;
   String _firestoreStatus = 'Operational';
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   String _formatDateTime(DateTime dt) {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -41,6 +55,8 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsNotifierProvider);
     final authState = ref.watch(authControllerProvider);
+    final paymentConfigAsync = ref.watch(paymentConfigStreamProvider);
+    final paymentConfig = paymentConfigAsync.value ?? PaymentConfigModel.initial();
     final user = authState.user;
     User? fbUser;
     try {
@@ -70,12 +86,19 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
         : 'Registered';
 
     final theme = Theme.of(context);
+    final bottomInset = MediaQuery.of(context).padding.bottom;
 
     return Container(
       color: theme.scaffoldBackgroundColor,
       child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          20 + bottomInset + 40,
+        ),
         children: [
           // ── Header Title & Subtitle ──
           Text(
@@ -442,6 +465,8 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                 trailing: OutlinedButton(
                   onPressed: () => _openChangePasswordDialog(),
                   style: OutlinedButton.styleFrom(
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     foregroundColor: theme.colorScheme.onSurface,
                     side: BorderSide(color: theme.colorScheme.outline),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -569,6 +594,8 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                 trailing: OutlinedButton(
                   onPressed: () => _confirmClearCache(),
                   style: OutlinedButton.styleFrom(
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     foregroundColor: const Color(0xFFD97706),
                     side: const BorderSide(color: Color(0xFFFCD34D)),
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -624,6 +651,104 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
           ),
           const SizedBox(height: 16),
 
+          // ── PAYMENT GATEWAY (RAZORPAY) ──
+          _SettingsSection(
+            title: 'Payment Gateway (Razorpay)',
+            icon: Icons.payment_rounded,
+            accentColor: AppColors.primaryCrimson,
+            children: [
+              _SettingsRow(
+                label: 'Razorpay Public Key ID',
+                subLabel: paymentConfig.razorpayKeyId.isNotEmpty
+                    ? paymentConfig.razorpayKeyId
+                    : 'Not Configured (e.g. rzp_test_...)',
+                trailing: OutlinedButton(
+                  onPressed: () => _openRazorpayKeyDialog(paymentConfig.razorpayKeyId),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    foregroundColor: AppColors.primaryCrimson,
+                    side: const BorderSide(color: AppColors.primaryCrimson),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: Text(
+                    paymentConfig.razorpayKeyId.isNotEmpty ? 'Edit Key' : 'Configure Key',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+              Divider(height: 20, color: theme.dividerColor),
+              _SettingsRow(
+                label: 'Gateway Environment',
+                subLabel: 'Switch between Razorpay sandbox testing and live payments',
+                trailing: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: paymentConfig.environment == 'LIVE'
+                        ? const Color(0xFF10B981).withValues(alpha: 0.12)
+                        : const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: paymentConfig.environment == 'LIVE'
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFFF59E0B),
+                    ),
+                  ),
+                  child: Text(
+                    paymentConfig.environment == 'LIVE' ? 'LIVE MODE' : 'TEST MODE',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: paymentConfig.environment == 'LIVE'
+                          ? const Color(0xFF047857)
+                          : const Color(0xFFB45309),
+                    ),
+                  ),
+                ),
+              ),
+              Divider(height: 20, color: theme.dividerColor),
+              _SettingsRow(
+                label: 'Bus Pass Standard Fee',
+                subLabel: 'Configured route fee required for bus pass issuance',
+                trailing: const Text(
+                  '₹4,500',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primaryCrimson,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryCrimson.withValues(alpha: 0.04),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.primaryCrimson.withValues(alpha: 0.15)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.shield_outlined, color: AppColors.primaryCrimson, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Razorpay Key Secret is server-only and deployed to Firebase Cloud Functions. It is never exposed inside the Flutter client application.',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: theme.colorScheme.onSurfaceVariant,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
           // ── 8. ADMIN DATA MANAGEMENT ──
           _SettingsSection(
             title: 'Admin Data Management',
@@ -643,6 +768,8 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                       : const Icon(Icons.sync_rounded, size: 14),
                   label: const Text('Refresh Data', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                   style: ElevatedButton.styleFrom(
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     backgroundColor: AppColors.primaryCrimson,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -737,6 +864,8 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                     child: OutlinedButton(
                       onPressed: () => _openPrivacyPolicyModal(),
                       style: OutlinedButton.styleFrom(
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         foregroundColor: theme.colorScheme.onSurface,
                         side: BorderSide(color: theme.colorScheme.outline),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -750,6 +879,8 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                     child: OutlinedButton(
                       onPressed: () => _openTermsModal(),
                       style: OutlinedButton.styleFrom(
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         foregroundColor: theme.colorScheme.onSurface,
                         side: BorderSide(color: theme.colorScheme.outline),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -799,6 +930,8 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                       icon: const Icon(Icons.report_problem_outlined, size: 15),
                       label: const Text('Report an Issue', style: TextStyle(fontSize: 12)),
                       style: ElevatedButton.styleFrom(
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         backgroundColor: AppColors.primaryCrimson,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -813,6 +946,8 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                       icon: const Icon(Icons.question_answer_outlined, size: 15),
                       label: const Text('Admin FAQ', style: TextStyle(fontSize: 12)),
                       style: OutlinedButton.styleFrom(
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         foregroundColor: theme.colorScheme.onSurface,
                         side: BorderSide(color: theme.colorScheme.outline),
                         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -876,6 +1011,8 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                   trailing: OutlinedButton(
                     onPressed: () => _confirmSignOut(),
                     style: OutlinedButton.styleFrom(
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       foregroundColor: Colors.red.shade700,
                       side: BorderSide(color: Colors.red.shade300),
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -891,6 +1028,8 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                   trailing: ElevatedButton(
                     onPressed: () => _openDeleteAccountDialog(),
                     style: ElevatedButton.styleFrom(
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       backgroundColor: Colors.red.shade700,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -911,6 +1050,139 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
   // ==========================================
   // ACTION HANDLERS & MODALS
   // ==========================================
+
+  void _openRazorpayKeyDialog(String currentKey) {
+    final controller = TextEditingController(text: currentKey);
+    final theme = Theme.of(context);
+    bool isLive = currentKey.startsWith('rzp_live_');
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Container(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.payment_rounded, color: AppColors.primaryCrimson, size: 24),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Configure Razorpay Key ID',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Enter your public Razorpay Key ID from Razorpay Dashboard -> Settings -> API Keys.',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.4),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                decoration: InputDecoration(
+                  labelText: 'Razorpay Key ID',
+                  hintText: isLive ? 'rzp_live_...' : 'rzp_test_...',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  prefixIcon: const Icon(Icons.vpn_key_rounded, size: 20),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  ChoiceChip(
+                    label: const Text('TEST MODE'),
+                    selected: !isLive,
+                    onSelected: (val) {
+                      setModalState(() => isLive = false);
+                    },
+                    selectedColor: AppColors.primaryCrimson.withValues(alpha: 0.15),
+                  ),
+                  const SizedBox(width: 10),
+                  ChoiceChip(
+                    label: const Text('LIVE MODE'),
+                    selected: isLive,
+                    onSelected: (val) {
+                      setModalState(() => isLive = true);
+                    },
+                    selectedColor: Colors.green.withValues(alpha: 0.15),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    final keyVal = controller.text.trim();
+                    try {
+                      await FirebaseFirestore.instance
+                          .collection('system_config')
+                          .doc('payment_config')
+                          .set(
+                        {
+                          'razorpayKeyId': keyVal,
+                          'environment': isLive ? 'LIVE' : 'TEST',
+                          'updatedAt': FieldValue.serverTimestamp(),
+                        },
+                        SetOptions(merge: true),
+                      );
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Razorpay Key ID saved: $keyVal'),
+                          backgroundColor: AppColors.success,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Failed to save configuration: $e'),
+                          backgroundColor: AppColors.error,
+                        ),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryCrimson,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Save Gateway Settings', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   /// 1. Edit Profile Dialog
   void _openEditProfileDialog({
@@ -1178,6 +1450,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(0, 36),
                     backgroundColor: AppColors.primaryCrimson,
                     foregroundColor: Colors.white,
                   ),
@@ -1292,6 +1565,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
+                minimumSize: const Size(0, 36),
                 backgroundColor: const Color(0xFFD97706),
                 foregroundColor: Colors.white,
               ),
@@ -1398,6 +1672,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
+                minimumSize: const Size(0, 36),
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
               ),
@@ -1481,6 +1756,7 @@ class _AdminSettingsTabState extends ConsumerState<AdminSettingsTab> {
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(0, 36),
                     backgroundColor: Colors.red.shade800,
                     foregroundColor: Colors.white,
                   ),
@@ -2047,7 +2323,26 @@ class _SettingsRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          trailing,
+          Flexible(
+            flex: 0,
+            child: Theme(
+              data: theme.copyWith(
+                elevatedButtonTheme: ElevatedButtonThemeData(
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+                outlinedButtonTheme: OutlinedButtonThemeData(
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ),
+              child: trailing,
+            ),
+          ),
         ],
       ),
     );

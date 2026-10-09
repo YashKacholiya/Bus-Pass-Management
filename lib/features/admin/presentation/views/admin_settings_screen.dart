@@ -41,7 +41,10 @@ class AdminSettingsScreen extends StatelessWidget {
           ),
         ),
       ),
-      body: const AdminSettingsTab(),
+      body: const SafeArea(
+        top: false,
+        child: AdminSettingsTab(),
+      ),
     );
   }
 }

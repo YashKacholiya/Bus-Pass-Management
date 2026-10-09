@@ -169,8 +169,11 @@ class _ApplicationDetailBody extends ConsumerWidget {
             const SizedBox(height: 16),
           ],
 
-        // ── Admin Actions (only for Pending applications) ──
-        if (passStatus == 'Pending') ...[
+        // ── Admin Actions (for Pending or Payment Pending applications) ──
+        if (passStatus == 'Pending' ||
+            passStatus == 'Payment Pending' ||
+            passStatus == 'Pending Payment' ||
+            passStatus == 'Pending Approval') ...[
           _buildAdminActions(context, ref),
           const SizedBox(height: 32),
         ],
@@ -294,6 +297,15 @@ class _ApplicationDetailBody extends ConsumerWidget {
       case 'Correction Required':
         bgColor = const Color(0xFFFFF3E0);
         textColor = const Color(0xFFE65100);
+        break;
+      case 'Pending Approval':
+        bgColor = AppColors.info.withOpacity(0.12);
+        textColor = AppColors.info;
+        break;
+      case 'Payment Pending':
+      case 'Pending Payment':
+        bgColor = AppColors.warning.withOpacity(0.12);
+        textColor = const Color(0xFFD97706);
         break;
       default:
         bgColor = AppColors.info.withOpacity(0.1);
@@ -473,6 +485,10 @@ class _ApplicationDetailBody extends ConsumerWidget {
 
   // ── Admin Actions (Approve / Reject / Request Correction) ──
   Widget _buildAdminActions(BuildContext context, WidgetRef ref) {
+    final String paymentStatusStr = (application['paymentStatus'] as String? ?? 'Pending').trim();
+    final bool isPaid = paymentStatusStr.toLowerCase() == 'paid' || paymentStatusStr.toLowerCase() == 'success';
+    final String passStatus = (application['passStatus'] as String? ?? application['status'] as String? ?? 'Pending').trim();
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -508,36 +524,144 @@ class _ApplicationDetailBody extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _AdminActionButton(
-                  label: 'Approve',
-                  icon: Icons.check_circle_rounded,
-                  color: AppColors.success,
-                  onTap: () => _handleApprove(context, ref),
-                ),
+          if (passStatus.toString().toLowerCase() == 'revoked') ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.error.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.error.withOpacity(0.3)),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _AdminActionButton(
-                  label: 'Reject',
-                  icon: Icons.cancel_rounded,
-                  color: AppColors.error,
-                  onTap: () => _handleReject(context, ref),
-                ),
+              child: Row(
+                children: [
+                  const Icon(Icons.block_rounded, color: AppColors.error, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'This pass was revoked by college administration. Reason: ${application['rejectionReason'] ?? application['revocationReason'] ?? "Administrative decision"}',
+                      style: const TextStyle(
+                        color: AppColors.error,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _AdminActionButton(
-                  label: 'Correction',
-                  icon: Icons.edit_note_rounded,
-                  color: AppColors.warning,
-                  onTap: () => _handleCorrection(context),
+            ),
+          ] else if (passStatus == 'Active' || passStatus == 'Approved') ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: AppColors.success.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.success.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Pass is ACTIVE and authorized for travel.',
+                          style: TextStyle(
+                            color: AppColors.success,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (application['passNumber'] != null)
+                          Text(
+                            'Pass No: ${application['passNumber']}',
+                            style: const TextStyle(color: Color(0xFF334155), fontSize: 11),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              width: double.infinity,
+              child: _AdminActionButton(
+                label: 'Revoke Pass',
+                icon: Icons.block_rounded,
+                color: AppColors.error,
+                onTap: () => _handleRevoke(context, ref),
+              ),
+            ),
+          ] else ...[
+            if (!isPaid) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.error.withOpacity(0.3)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.lock_rounded, color: AppColors.error, size: 20),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Payment required before approval. This application is unpaid and cannot be approved until verified payment is received.',
+                        style: TextStyle(
+                          color: AppColors.error,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
-          ),
+            Row(
+              children: [
+                Expanded(
+                  child: _AdminActionButton(
+                    label: isPaid ? 'Approve' : 'Payment Required',
+                    icon: isPaid ? Icons.check_circle_rounded : Icons.lock_outline_rounded,
+                    color: isPaid ? AppColors.success : Colors.grey.shade400,
+                    onTap: isPaid
+                        ? () => _handleApprove(context, ref)
+                        : () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Payment required before approval. Student must complete verified payment first.'),
+                                backgroundColor: AppColors.error,
+                              ),
+                            );
+                          },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _AdminActionButton(
+                    label: 'Reject',
+                    icon: Icons.cancel_rounded,
+                    color: AppColors.error,
+                    onTap: () => _handleReject(context, ref),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _AdminActionButton(
+                    label: 'Correction',
+                    icon: Icons.edit_note_rounded,
+                    color: AppColors.warning,
+                    onTap: () => _handleCorrection(context),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -545,14 +669,30 @@ class _ApplicationDetailBody extends ConsumerWidget {
 
   // ── Action Handlers ──
 
-  void _handleApprove(BuildContext context, WidgetRef ref) {
+  void _handleRevoke(BuildContext context, WidgetRef ref) {
+    final reasonController = TextEditingController();
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Approve Application'),
-        content: const Text(
-            'This will approve the application and generate a unique Pass ID. Continue?'),
+        title: const Text('Revoke Bus Pass'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Are you sure you want to revoke this active bus pass? The student will no longer be authorized to board buses.'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: reasonController,
+              maxLines: 2,
+              decoration: InputDecoration(
+                hintText: 'Reason for revocation...',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -560,17 +700,27 @@ class _ApplicationDetailBody extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () async {
+              final reason = reasonController.text.trim();
+              if (reason.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please specify a revocation reason.'),
+                    backgroundColor: AppColors.warning,
+                  ),
+                );
+                return;
+              }
               Navigator.pop(ctx);
               try {
-                final adminUid =
-                    ref.read(authControllerProvider).user?.uid ?? '';
+                final studentUid = application['uid'] ?? application['studentId'] ?? '';
+                final adminUid = ref.read(authControllerProvider).user?.uid ?? '';
                 final repo = AdminRepository();
-                await repo.approveApplication(applicationId, adminUid);
+                await repo.revokePass(studentUid, reason, adminUid);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Application approved successfully'),
-                      backgroundColor: AppColors.success,
+                      content: Text('Bus pass revoked successfully.'),
+                      backgroundColor: AppColors.error,
                     ),
                   );
                 }
@@ -578,20 +728,131 @@ class _ApplicationDetailBody extends ConsumerWidget {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('Error: $e'),
+                      content: Text('Failed to revoke pass: $e'),
                       backgroundColor: AppColors.error,
                     ),
                   );
                 }
               }
             },
-            child: const Text(
-              'Approve',
-              style: TextStyle(
-                  color: AppColors.success, fontWeight: FontWeight.bold),
-            ),
+            child: const Text('Revoke', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
           ),
         ],
+      ),
+    );
+  }
+
+  void _handleApprove(BuildContext context, WidgetRef ref) {
+    final String paymentStatusStr = (application['paymentStatus'] as String? ?? 'Pending').trim();
+    final bool isPaid = paymentStatusStr.toLowerCase() == 'paid' || paymentStatusStr.toLowerCase() == 'success';
+
+    if (!isPaid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Payment required before approval.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    DateTime selectedValidUntil = DateTime.now().add(const Duration(days: 180));
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Approve Bus Pass'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'This will approve the application, generate a unique Pass Number (e.g. ICEM-BP-2026-XXXXXX), and activate the student\'s Digital Pass with QR Code.',
+                style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
+              ),
+              const SizedBox(height: 16),
+              const Text('Pass Validity Until:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const SizedBox(height: 8),
+              InkWell(
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: selectedValidUntil,
+                    firstDate: DateTime.now(),
+                    lastDate: DateTime.now().add(const Duration(days: 730)),
+                  );
+                  if (picked != null) {
+                    setDialogState(() {
+                      selectedValidUntil = picked;
+                    });
+                  }
+                },
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: AppColors.primaryCrimson.withOpacity(0.4)),
+                    borderRadius: BorderRadius.circular(10),
+                    color: AppColors.lightCrimson.withOpacity(0.3),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '${selectedValidUntil.day.toString().padLeft(2, '0')}/${selectedValidUntil.month.toString().padLeft(2, '0')}/${selectedValidUntil.year}',
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryCrimson),
+                      ),
+                      const Icon(Icons.calendar_today_rounded, size: 18, color: AppColors.primaryCrimson),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                try {
+                  final adminUid = ref.read(authControllerProvider).user?.uid ?? '';
+                  final repo = AdminRepository();
+                  await repo.approveApplication(
+                    applicationId,
+                    adminUid,
+                    validUntil: selectedValidUntil,
+                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Application approved and pass activated successfully!'),
+                        backgroundColor: AppColors.success,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error: $e'),
+                        backgroundColor: AppColors.error,
+                      ),
+                    );
+                  }
+                }
+              },
+              child: const Text(
+                'Approve & Activate',
+                style: TextStyle(color: AppColors.success, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

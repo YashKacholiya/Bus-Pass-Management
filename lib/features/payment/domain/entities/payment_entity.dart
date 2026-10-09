@@ -1,56 +1,84 @@
 import 'package:equatable/equatable.dart';
 
 class PaymentEntity extends Equatable {
-  final String receiptId;
-  final String uid;
-  final String passId;
+  final String paymentId;
+  final String applicationId;
+  final String studentId;
   final String studentName;
-  final double amount;
-  final String transactionId;
-  final DateTime paymentDate;
-  final String paymentStatus;
-  final String paymentMethod;
-  final String route;
   final String routeId;
-  final String boarding;
-  final String destination;
-  final String distance;
-  final double fare;
+  final String routeName;
+  final double amount;
+  final String currency;
+  final String? razorpayOrderId;
+  final String? razorpayPaymentId;
+  final String? razorpaySignature;
+  final String paymentStatus; // created, pending, processing, paid, failed, submitted_for_verification, cancelled, refunded
+  final String paymentMethod; // Razorpay, UPI Manual QR, Cash (Admin)
+  final String? utrNumber;
+  final String? receiptId;
+  final DateTime createdAt;
+  final DateTime? paidAt;
+  final DateTime? verifiedAt;
+
+  // Backwards compatibility getters
+  String get uid => studentId;
+  String get passId => applicationId;
+  DateTime get paymentDate => paidAt ?? createdAt;
+  String get route => routeName;
+  String get transactionId => razorpayPaymentId ?? utrNumber ?? paymentId;
+  String get boarding => '';
+  String get destination => '';
+  String get distance => '';
+  double get fare => amount;
 
   const PaymentEntity({
-    required this.receiptId,
-    required this.uid,
-    required this.passId,
+    required this.paymentId,
+    required this.applicationId,
+    required this.studentId,
     required this.studentName,
+    required this.routeId,
+    required this.routeName,
     required this.amount,
-    required this.transactionId,
-    required this.paymentDate,
+    this.currency = 'INR',
+    this.razorpayOrderId,
+    this.razorpayPaymentId,
+    this.razorpaySignature,
     required this.paymentStatus,
-    this.paymentMethod = '',
-    this.route = '',
-    this.routeId = '',
-    this.boarding = '',
-    this.destination = '',
-    this.distance = '',
-    this.fare = 0.0,
+    required this.paymentMethod,
+    this.utrNumber,
+    this.receiptId,
+    required this.createdAt,
+    this.paidAt,
+    this.verifiedAt,
   });
+
+  bool get isPaid =>
+      paymentStatus.toLowerCase() == 'paid' ||
+      paymentStatus.toLowerCase() == 'success';
+
+  bool get isPendingVerification =>
+      paymentStatus == 'submitted_for_verification' ||
+      paymentStatus == 'Pending Verification';
 
   @override
   List<Object?> get props => [
-        receiptId,
-        uid,
-        passId,
+        paymentId,
+        applicationId,
+        studentId,
         studentName,
+        routeId,
+        routeName,
         amount,
-        transactionId,
-        paymentDate,
+        currency,
+        razorpayOrderId,
+        razorpayPaymentId,
+        razorpaySignature,
         paymentStatus,
         paymentMethod,
-        route,
-        routeId,
-        boarding,
-        destination,
-        distance,
-        fare,
+        utrNumber,
+        receiptId,
+        createdAt,
+        paidAt,
+        verifiedAt,
       ];
 }

@@ -44,27 +44,9 @@ class _AdminRoutesTabState extends ConsumerState<AdminRoutesTab>
     final searchQuery = ref.watch(routeSearchQueryProvider);
     final statusFilter = ref.watch(routeStatusFilterProvider);
 
-    final isMobile = MediaQuery.of(context).size.width < 900;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: isMobile
-          ? AppBar(
-              backgroundColor: Colors.white,
-              surfaceTintColor: Colors.white,
-              title: const Text(
-                'Route Management',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF0F172A)),
-              ),
-              leading: IconButton(
-                icon: const Icon(Icons.menu_rounded, color: Color(0xFF0F172A)),
-                onPressed: () {
-                  Scaffold.of(context).openDrawer();
-                },
-              ),
-              elevation: 0,
-            )
-          : null,
       floatingActionButton: FloatingActionButton.extended(
         key: const ValueKey('add_route_fab'),
         onPressed: () => _showRouteSheet(context, route: null),
@@ -1118,9 +1100,11 @@ class _RouteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = route['routeName']?.toString() ?? 'Unnamed Route';
+    final theme = Theme.of(context);
+    final name = route['name']?.toString() ?? route['routeName']?.toString() ?? 'Unnamed Route';
     final number = route['routeNumber']?.toString() ?? '';
-    final source = route['source']?.toString() ?? '';
+    final origin = route['origin']?.toString() ?? route['source']?.toString() ?? '';
+    final source = origin;
     final dest = route['destination']?.toString() ?? '';
     final fareRaw = route['fare'];
     final fare = fareRaw is num
@@ -1134,19 +1118,18 @@ class _RouteCard extends StatelessWidget {
     final isActive = status == 'Active';
     final stops = route['stops'];
     final stopsCount = stops is List ? stops.length : 0;
-    final assignedBus = route['assignedBusId']?.toString() ?? '';
 
     return AnimatedContainer(
       duration: Duration(milliseconds: 300 + (index * 50)),
       margin: const EdgeInsets.only(bottom: 12),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: isActive
                 ? AppColors.success.withOpacity(0.15)
-                : const Color(0xFFE2E8F0),
+                : theme.colorScheme.outlineVariant,
           ),
           boxShadow: [
             BoxShadow(
@@ -1192,10 +1175,10 @@ class _RouteCard extends StatelessWidget {
                       children: [
                         Text(
                           name,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.w700,
                             fontSize: 14,
-                            color: Color(0xFF0F172A),
+                            color: theme.colorScheme.onSurface,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -1436,9 +1419,10 @@ class _RouteSearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return TextField(
       onChanged: onChanged,
-      style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
+      style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface),
       decoration: InputDecoration(
         hintText: 'Search by name, number, source, destination…',
         hintStyle:
@@ -1454,11 +1438,11 @@ class _RouteSearchBar extends StatelessWidget {
             : null,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          borderSide: BorderSide(color: theme.colorScheme.outlineVariant),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          borderSide: BorderSide(color: theme.colorScheme.outlineVariant),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
@@ -1466,7 +1450,7 @@ class _RouteSearchBar extends StatelessWidget {
               color: AppColors.primaryCrimson, width: 1.5),
         ),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: theme.colorScheme.surface,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
@@ -1474,28 +1458,6 @@ class _RouteSearchBar extends StatelessWidget {
   }
 }
 
-class _AddRouteButton extends StatelessWidget {
-  final VoidCallback onTap;
-  const _AddRouteButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return ElevatedButton.icon(
-      onPressed: onTap,
-      icon: const Icon(Icons.add_rounded, size: 18),
-      label: const Text('Add Route'),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: AppColors.primaryCrimson,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12)),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        elevation: 0,
-      ),
-    );
-  }
-}
 
 class _SectionHeader extends StatelessWidget {
   final String title;

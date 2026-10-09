@@ -1,4 +1,11 @@
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:icem_bus/core/errors/failures.dart';
+
+final adminRepositoryProvider = Provider<AdminRepository>((ref) {
+  return AdminRepository();
+});
 
 /// Repository handling all Firestore operations for the Admin dashboard.
 class AdminRepository {
@@ -13,25 +20,114 @@ class AdminRepository {
 
   /// Approve a bus pass application by document ID.
   ///
-  /// Sets passStatus = "Approved", generates a unique Pass ID,
-  /// records the approving admin UID and server timestamp.
+  /// CRITICAL SECURITY ENFORCEMENT:
+  /// Verifies via Firestore Transaction that paymentStatus == 'Paid'.
+  /// If payment is unpaid or pending, the transaction immediately fails.
+  /// Only verified paid applications can be approved.
+  /// Upon approval, generates a unique Pass ID & Pass Number,
+  /// records admin UID and timestamp, and activates the student's digital pass
+  /// and scannable QR code in `bus_passes`.
   Future<void> approveApplication(
     String applicationId,
-    String adminUid,
-  ) async {
+    String adminUid, {
+    DateTime? validUntil,
+  }) async {
+    final now = DateTime.now();
+    final passNumber =
+        'ICEM-BP-${now.year}-${now.millisecondsSinceEpoch.toString().substring(7)}';
     final passId =
-        'ICEM-PASS-${DateTime.now().millisecondsSinceEpoch.toRadixString(16).toUpperCase()}';
+        'ICEM-PASS-${now.millisecondsSinceEpoch.toRadixString(16).toUpperCase()}';
 
-    await _firestore
-        .collection('bus_pass_applications')
-        .doc(applicationId)
-        .update({
-      'status': 'Approved',
-      'passStatus': 'Approved',
-      'passId': passId,
-      'approvedBy': adminUid,
-      'approvedAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
+    await _firestore.runTransaction((transaction) async {
+      final appRef =
+          _firestore.collection('bus_pass_applications').doc(applicationId);
+      final snapshot = await transaction.get(appRef);
+
+      if (!snapshot.exists) {
+        throw const ServerFailure('Application record not found.');
+      }
+
+      final data = snapshot.data()!;
+      final paymentStatus =
+          (data['paymentStatus'] as String? ?? '').trim().toLowerCase();
+
+      if (paymentStatus != 'paid' && paymentStatus != 'success') {
+        throw const ServerFailure(
+            'Payment verification is required before approving this bus pass.');
+      }
+
+      final studentUid =
+          data['uid'] as String? ?? data['studentId'] as String? ?? '';
+
+      final validFromTimestamp = Timestamp.fromDate(now);
+      final validUntilTimestamp = validUntil != null
+          ? Timestamp.fromDate(validUntil)
+          : (data['validUntil'] as Timestamp? ??
+              data['expiryDate'] as Timestamp? ??
+              Timestamp.fromDate(now.add(const Duration(days: 180))));
+
+      // 1. Update the application document
+      transaction.update(appRef, {
+        'status': 'Approved',
+        'applicationStatus': 'Approved',
+        'passStatus': 'Active',
+        'passId': passId,
+        'passNumber': passNumber,
+        'approvedBy': adminUid,
+        'approvedAt': FieldValue.serverTimestamp(),
+        'validFrom': validFromTimestamp,
+        'validUntil': validUntilTimestamp,
+        'expiryDate': validUntilTimestamp,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // 2. Activate the digital bus pass in bus_passes
+      if (studentUid.isNotEmpty) {
+        final passRef = _firestore.collection('bus_passes').doc(studentUid);
+        final qrPayload = jsonEncode({
+          'type': 'ICEM_BUS_PASS',
+          'passNumber': passNumber,
+          'passId': passId,
+          'studentId': studentUid,
+        });
+
+        transaction.set(
+            passRef,
+            {
+              'uid': studentUid,
+              'studentId': studentUid,
+              'applicationId': applicationId,
+              'passId': passId,
+              'passNumber': passNumber,
+              'route': data['route'] ?? data['routeName'] ?? '',
+              'routeName': data['routeName'] ?? data['route'] ?? '',
+              'routeId': data['routeId'] ?? '',
+              'boardingStop': data['boardingStop'] ?? '',
+              'destinationStop': data['destinationStop'] ?? '',
+              'fare': (data['fare'] as num?)?.toDouble() ?? 0.0,
+              'busNumber': data['busNumber'] ?? 'Not Assigned',
+              'busId': data['busId'],
+              'status': 'Active',
+              'passStatus': 'Active',
+              'applicationStatus': 'Approved',
+              'paymentStatus': 'Paid',
+              'paymentId': data['paymentId'] ?? '',
+              'expiryDate': validUntilTimestamp,
+              'validFrom': validFromTimestamp,
+              'validUntil': validUntilTimestamp,
+              'department': data['department'],
+              'course': data['course'],
+              'year': data['year'],
+              'semester': data['semester'],
+              'distance': data['distance'],
+              'approvedBy': adminUid,
+              'approvedAt': FieldValue.serverTimestamp(),
+              'createdAt': data['createdAt'] ?? FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
+              'qrCode': qrPayload,
+            },
+            SetOptions(merge: true));
+      }
     });
   }
 
@@ -226,8 +322,8 @@ class AdminRepository {
   }
 
   /// Verify a manual cash/transfer payment by document ID.
-  /// Sets paymentStatus = "Paid" in receipts, updates the application,
-  /// and activates the student's digital bus pass.
+  /// Sets paymentStatus = "Paid" in receipts, updates the application to Pending Approval,
+  /// and updates bus_passes to Paid/Pending (pass remains pending admin approval).
   Future<void> verifyManualPayment(
     String receiptId,
     String studentUid,
@@ -241,32 +337,58 @@ class AdminRepository {
       'paymentStatus': 'Paid',
       'verifiedBy': adminUid,
       'verifiedAt': FieldValue.serverTimestamp(),
+      'paidAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
 
+    // Also update payments document if present
+    final paymentRef = _firestore.collection('payments').doc(receiptId);
+    batch.set(paymentRef, {
+      'paymentStatus': 'Paid',
+      'verifiedBy': adminUid,
+      'verifiedAt': FieldValue.serverTimestamp(),
+      'paidAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
     // 2. Update the pending application in bus_pass_applications
+    // Payment is now verified as Paid; application is eligible for Admin approval (status = 'Pending')
     final appQuery = await _firestore
         .collection('bus_pass_applications')
         .where('uid', isEqualTo: studentUid)
-        .where('passStatus', isEqualTo: 'Pending Payment')
+        .where('paymentStatus', whereIn: const [
+          'Pending',
+          'Pending Payment',
+          'Pending Verification',
+          'Unpaid',
+          'submitted_for_verification',
+          'pending',
+          'created',
+          'processing'
+        ])
         .limit(1)
         .get();
 
     for (final doc in appQuery.docs) {
       batch.update(doc.reference, {
         'paymentStatus': 'Paid',
-        'passStatus': 'Active',
+        'status': 'Pending',
+        'passStatus': 'Pending',
         'updatedAt': FieldValue.serverTimestamp(),
       });
     }
 
-    // 3. Update/create digital bus pass in bus_passes
+    // 3. Update digital bus pass in bus_passes (Payment is verified, awaiting Admin approval)
     final passRef = _firestore.collection('bus_passes').doc(studentUid);
-    batch.update(passRef, {
-      'paymentStatus': 'Paid',
-      'passStatus': 'Active',
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+    final passSnap = await passRef.get();
+    if (passSnap.exists) {
+      batch.update(passRef, {
+        'paymentStatus': 'Paid',
+        'status': 'Pending',
+        'passStatus': 'Pending',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
 
     await batch.commit();
   }
@@ -282,6 +404,12 @@ class AdminRepository {
       'paymentStatus': 'Failed',
       'updatedAt': FieldValue.serverTimestamp(),
     });
+
+    final paymentRef = _firestore.collection('payments').doc(receiptId);
+    batch.set(paymentRef, {
+      'paymentStatus': 'Failed',
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
 
     // 2. Update the pending application in bus_pass_applications
     final appQuery = await _firestore
@@ -324,6 +452,12 @@ class AdminRepository {
       'paymentStatus': 'Refunded',
       'updatedAt': FieldValue.serverTimestamp(),
     });
+
+    final paymentRef = _firestore.collection('payments').doc(receiptId);
+    batch.set(paymentRef, {
+      'paymentStatus': 'Refunded',
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
 
     // 2. Update all applications for the student to status "Refunded"
     final appQuery = await _firestore
@@ -387,40 +521,124 @@ class AdminRepository {
     await batch.commit();
   }
 
-  Future<void> approveStudentPass(String uid, String adminUid) async {
-    final batch = _firestore.batch();
-    final passRef = _firestore.collection('bus_passes').doc(uid);
-    
-    // Check if pass document exists, if not set/create, if yes update
-    final passSnap = await passRef.get();
-    if (passSnap.exists) {
-      batch.update(passRef, {
+  Future<void> approveStudentPass(
+    String uid,
+    String adminUid, {
+    DateTime? validUntil,
+  }) async {
+    final now = DateTime.now();
+    final passNumber =
+        'ICEM-BP-${now.year}-${now.millisecondsSinceEpoch.toString().substring(7)}';
+
+    await _firestore.runTransaction((transaction) async {
+      final passRef = _firestore.collection('bus_passes').doc(uid);
+      final passSnap = await transaction.get(passRef);
+
+      String paymentStatus = '';
+      String existingPassId = '';
+      if (passSnap.exists) {
+        final d = passSnap.data()!;
+        paymentStatus = (d['paymentStatus'] as String? ?? '').trim().toLowerCase();
+        existingPassId = d['passId'] as String? ?? '';
+      }
+
+      if (paymentStatus != 'paid' && paymentStatus != 'success') {
+        throw const ServerFailure(
+            'Payment required before approval. Student has not completed verified payment.');
+      }
+
+      final passId = existingPassId.isNotEmpty
+          ? existingPassId
+          : 'ICEM-PASS-${now.millisecondsSinceEpoch.toRadixString(16).toUpperCase()}';
+
+      final validFromTimestamp = Timestamp.fromDate(now);
+      final validUntilTimestamp = validUntil != null
+          ? Timestamp.fromDate(validUntil)
+          : (passSnap.data()?['validUntil'] as Timestamp? ??
+              passSnap.data()?['expiryDate'] as Timestamp? ??
+              Timestamp.fromDate(now.add(const Duration(days: 180))));
+
+      final qrPayload = jsonEncode({
+        'type': 'ICEM_BUS_PASS',
+        'passNumber': passNumber,
+        'passId': passId,
+        'studentId': uid,
+      });
+
+      transaction.update(passRef, {
+        'status': 'Active',
         'passStatus': 'Active',
-        'paymentStatus': 'Paid',
+        'applicationStatus': 'Approved',
+        'passNumber': passNumber,
+        'passId': passId,
+        'approvedBy': adminUid,
+        'approvedAt': FieldValue.serverTimestamp(),
+        'validFrom': validFromTimestamp,
+        'validUntil': validUntilTimestamp,
+        'expiryDate': validUntilTimestamp,
+        'qrCode': qrPayload,
         'updatedAt': FieldValue.serverTimestamp(),
       });
-    } else {
-      batch.set(passRef, {
-        'uid': uid,
-        'passStatus': 'Active',
-        'paymentStatus': 'Paid',
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    }
+    });
 
     final appQuery = await _firestore
         .collection('bus_pass_applications')
         .where('uid', isEqualTo: uid)
+        .where('paymentStatus', whereIn: const ['Paid', 'paid', 'Success', 'success'])
+        .get();
+
+    for (final doc in appQuery.docs) {
+      await doc.reference.update({
+        'status': 'Approved',
+        'applicationStatus': 'Approved',
+        'passStatus': 'Active',
+        'passNumber': passNumber,
+        'approvedBy': adminUid,
+        'approvedAt': FieldValue.serverTimestamp(),
+        'validFrom': Timestamp.fromDate(now),
+        'validUntil': validUntil != null
+            ? Timestamp.fromDate(validUntil)
+            : Timestamp.fromDate(now.add(const Duration(days: 180))),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
+  /// Revoke an active bus pass.
+  /// Sets passStatus = 'Revoked' in both `bus_passes` and `bus_pass_applications`.
+  Future<void> revokePass(
+    String studentUid,
+    String reason,
+    String adminUid,
+  ) async {
+    final batch = _firestore.batch();
+    final passRef = _firestore.collection('bus_passes').doc(studentUid);
+    batch.update(passRef, {
+      'status': 'Revoked',
+      'passStatus': 'Revoked',
+      'revokedBy': adminUid,
+      'revocationReason': reason,
+      'revokedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    final appQuery = await _firestore
+        .collection('bus_pass_applications')
+        .where('uid', isEqualTo: studentUid)
+        .where('passStatus', whereIn: const ['Active', 'Approved'])
         .get();
 
     for (final doc in appQuery.docs) {
       batch.update(doc.reference, {
-        'passStatus': 'Active',
-        'paymentStatus': 'Paid',
+        'status': 'Revoked',
+        'passStatus': 'Revoked',
+        'revokedBy': adminUid,
+        'revocationReason': reason,
+        'revokedAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
     }
+
     await batch.commit();
   }
 

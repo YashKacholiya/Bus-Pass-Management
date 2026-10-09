@@ -7,6 +7,8 @@ abstract class AuthRepository {
     required String email,
     required String password,
     required String role,
+    String? mobile,
+    String? collegeId,
   });
 
   /// Log in an existing user with email and password

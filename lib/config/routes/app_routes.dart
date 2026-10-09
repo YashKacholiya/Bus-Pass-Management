@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:icem_bus/config/theme/app_colors.dart';
+import 'package:icem_bus/features/auth/domain/entities/user_entity.dart';
 import 'package:icem_bus/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:icem_bus/features/admin/presentation/views/staff_dashboard.dart';
 import 'package:icem_bus/features/admin/presentation/views/admin_dashboard.dart';
@@ -17,6 +18,10 @@ import 'package:icem_bus/shared/error_screen.dart';
 import 'package:icem_bus/shared/loading_screen.dart';
 import 'package:icem_bus/features/driver/presentation/views/driver_management_screen.dart';
 import 'package:icem_bus/features/admin/presentation/views/admin_settings_screen.dart';
+import 'package:icem_bus/features/payment/presentation/views/payment_receipt_screen.dart';
+import 'package:icem_bus/features/bus_pass/presentation/views/qr_verification_screen.dart';
+import 'package:icem_bus/features/student/presentation/views/student_pass_history_screen.dart';
+import 'package:icem_bus/features/student/presentation/views/student_pass_detail_screen.dart';
 
 class AppRoutes {
   AppRoutes._();
@@ -39,8 +44,14 @@ class AppRoutes {
   static const String studentApply = '/student/apply';
   static const String studentRenew = '/student/renew';
   static const String studentDigitalPass = '/student/digital-pass';
+  static const String studentPassHistory = '/student/pass-history';
+  static const String studentPassDetail = '/student/pass-detail/:id';
   static const String studentPaymentHistory = '/student/payment-history';
   static const String studentPayment = '/student/payment';
+  static const String studentPaymentReceipt = '/student/payment-receipt/:id';
+
+  // Admin & Staff verification route
+  static const String qrVerification = '/admin/verify-qr';
 
   static final GoRouter router = GoRouter(
     initialLocation: splash,
@@ -79,7 +90,7 @@ class AppRoutes {
         return null;
       }
 
-      final String role = user.role;
+      final String role = UserEntity.normalizeRole(user.role);
 
       if (isPublicPath) {
         // Prevent showing login/register/onboarding again if already logged in
@@ -92,8 +103,26 @@ class AppRoutes {
         }
       }
 
+      // Guard QR Verification (accessible by both Admin and Staff)
+      if (path == qrVerification) {
+        if (role != 'Admin' && role != 'Staff') {
+          Future.microtask(() {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Access Denied: Conductor or Administrator privileges required.'),
+                  backgroundColor: AppColors.error,
+                ),
+              );
+            }
+          });
+          return studentDashboard;
+        }
+        return null;
+      }
+
       // Guard Admin pages
-      if (path == adminDashboard || path.startsWith('/admin/')) {
+      if (path == adminDashboard || (path.startsWith('/admin/') && path != qrVerification)) {
         if (role != 'Admin') {
           Future.microtask(() {
             if (context.mounted) {
@@ -218,6 +247,32 @@ class AppRoutes {
         path: studentPayment,
         builder: (BuildContext context, GoRouterState state) {
           return const StudentPaymentScreen();
+        },
+      ),
+      GoRoute(
+        path: studentPaymentReceipt,
+        builder: (BuildContext context, GoRouterState state) {
+          final paymentId = state.pathParameters['id'] ?? '';
+          return PaymentReceiptScreen(paymentId: paymentId);
+        },
+      ),
+      GoRoute(
+        path: studentPassHistory,
+        builder: (BuildContext context, GoRouterState state) {
+          return const StudentPassHistoryScreen();
+        },
+      ),
+      GoRoute(
+        path: studentPassDetail,
+        builder: (BuildContext context, GoRouterState state) {
+          final applicationId = state.pathParameters['id'] ?? '';
+          return StudentPassDetailScreen(applicationId: applicationId);
+        },
+      ),
+      GoRoute(
+        path: qrVerification,
+        builder: (BuildContext context, GoRouterState state) {
+          return const QrVerificationScreen();
         },
       ),
       GoRoute(

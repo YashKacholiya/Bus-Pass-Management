@@ -1,26 +1,51 @@
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously
+
+import 'dart:convert';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:icem_bus/config/routes/app_routes.dart';
 import 'package:icem_bus/config/theme/app_colors.dart';
+import 'package:icem_bus/features/auth/domain/entities/user_entity.dart';
 import 'package:icem_bus/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:icem_bus/features/bus_pass/presentation/controllers/bus_pass_controller.dart';
+import 'package:icem_bus/shared/app_card.dart';
+import 'package:icem_bus/shared/app_text_field.dart';
 import 'package:icem_bus/shared/custom_button.dart';
-import 'package:icem_bus/shared/glass_card.dart';
+import 'package:icem_bus/shared/empty_state.dart';
+import 'package:icem_bus/shared/loading_skeleton.dart';
 import 'package:icem_bus/features/bus_pass/data/repositories/bus_pass_repository_impl.dart';
-import 'package:icem_bus/features/payment/data/repositories/payment_repository_impl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+
+export 'package:icem_bus/features/payment/presentation/views/student_payment_screen.dart';
 
 // StreamProvider to query ACTIVE routes from Firestore collection 'bus_routes'
 // Students can only see and apply for routes with status == 'Active'
-final busRoutesStreamProvider = StreamProvider.autoDispose<QuerySnapshot<Map<String, dynamic>>>((ref) {
+final busRoutesStreamProvider = StreamProvider.autoDispose<List<DocumentSnapshot<Map<String, dynamic>>>>((ref) {
   return FirebaseFirestore.instance
       .collection('bus_routes')
-      .where('status', isEqualTo: 'Active')
-      .snapshots();
+      .snapshots()
+      .map((snapshot) {
+        final docs = snapshot.docs.where((doc) {
+          final data = doc.data();
+          final status = (data['status'] as String?)?.trim();
+          if (status == null || status.isEmpty) return true;
+          return status.toLowerCase() == 'active';
+        }).toList();
+        docs.sort((a, b) {
+          final numA = a.data()['routeNumber']?.toString() ?? '';
+          final numB = b.data()['routeNumber']?.toString() ?? '';
+          if (numA.isNotEmpty && numB.isNotEmpty) {
+            return numA.compareTo(numB);
+          }
+          final nameA = a.data()['routeName']?.toString() ?? '';
+          final nameB = b.data()['routeName']?.toString() ?? '';
+          return nameA.compareTo(nameB);
+        });
+        return docs;
+      });
 });
 
 
@@ -33,7 +58,7 @@ final pendingApplicationStreamProvider = StreamProvider.autoDispose<QuerySnapsho
   return FirebaseFirestore.instance
       .collection('bus_pass_applications')
       .where('uid', isEqualTo: user.uid)
-      .where('passStatus', isEqualTo: 'Pending Payment')
+      .where('passStatus', whereIn: const ['Payment Pending', 'Pending Payment', 'Pending'])
       .limit(1)
       .snapshots();
 });
@@ -47,7 +72,7 @@ final pendingPassStreamProvider = StreamProvider.autoDispose<QuerySnapshot<Map<S
   return FirebaseFirestore.instance
       .collection('bus_passes')
       .where('uid', isEqualTo: user.uid)
-      .where('paymentStatus', whereIn: const ['Pending', 'Failed', 'Pending Verification'])
+      .where('paymentStatus', whereIn: const ['Pending', 'Failed', 'Pending Verification', 'Unpaid'])
       .limit(1)
       .snapshots();
 });
@@ -64,8 +89,8 @@ class ApplyPassScreen extends ConsumerStatefulWidget {
 
 class _ApplyPassScreenState extends ConsumerState<ApplyPassScreen> {
   final _formKey = GlobalKey<FormState>();
-  
-  // Controllers for personal details
+
+  // Profile controllers
   final _prnController = TextEditingController();
   final _collegeIdController = TextEditingController();
   final _departmentController = TextEditingController();
@@ -79,12 +104,14 @@ class _ApplyPassScreenState extends ConsumerState<ApplyPassScreen> {
   String? _selectedBoardingStop;
   String? _selectedDestinationStop;
 
+  // View state: 4-step wizard & submission
+  int _currentStep = 0;
   bool _isSubmitting = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeDefaultRoutesIfNeeded();
+    _loadProfileFromCurrentState();
   }
 
   @override
@@ -99,263 +126,1103 @@ class _ApplyPassScreenState extends ConsumerState<ApplyPassScreen> {
     super.dispose();
   }
 
-  /// Automatically populate route samples if Firestore is empty
-  Future<void> _initializeDefaultRoutesIfNeeded() async {
-    try {
-      final query = await FirebaseFirestore.instance.collection('bus_routes').get();
-      if (query.docs.isEmpty) {
-        final batch = FirebaseFirestore.instance.batch();
-        
-        final route1 = FirebaseFirestore.instance.collection('bus_routes').doc('route_A');
-        batch.set(route1, {
-          'routeId': 'route_A',
-          'routeName': 'Route A - Wakad & Hinjewadi',
-          'boardingStops': ['Wakad Chowk', 'Dange Chowk', 'Kalewadi Phata'],
-          'destinationStops': ['ICEM Campus', 'Indira College Wakad'],
-          'distance': '18 km',
-          'fare': 4500.0,
-        });
-
-        final route2 = FirebaseFirestore.instance.collection('bus_routes').doc('route_B');
-        batch.set(route2, {
-          'routeId': 'route_B',
-          'routeName': 'Route B - Kothrud & Deccan',
-          'boardingStops': ['Kothrud Stand', 'Deccan Corner', 'Karve Nagar'],
-          'destinationStops': ['ICEM Campus'],
-          'distance': '22 km',
-          'fare': 5500.0,
-        });
-
-        final route3 = FirebaseFirestore.instance.collection('bus_routes').doc('route_C');
-        batch.set(route3, {
-          'routeId': 'route_C',
-          'routeName': 'Route C - Chinchwad & Pimpri',
-          'boardingStops': ['Chinchwad Station', 'Pimpri Chowk', 'Akurdi Railway Station'],
-          'destinationStops': ['ICEM Campus'],
-          'distance': '15 km',
-          'fare': 4000.0,
-        });
-
-        await batch.commit();
-      }
-    } catch (_) {}
-  }
-
-  void _onApplyPressed() async {
-    if (_formKey.currentState!.validate() &&
-        _selectedRouteDoc != null &&
-        _selectedBoardingStop != null &&
-        _selectedDestinationStop != null) {
-      
+  void _loadProfileFromCurrentState() {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final user = ref.read(authControllerProvider).user;
-      if (user == null) return;
+      if (user != null) {
+        _populateFieldsFromUser(user);
 
-      setState(() => _isSubmitting = true);
-      
-      try {
-        await ref.read(busPassRepositoryProvider).applyForBusPass(
-          uid: user.uid,
-          route: _selectedRouteDoc!['routeName'],
-          routeId: _selectedRouteDoc!['routeId'],
-          boardingStop: _selectedBoardingStop!,
-          destinationStop: _selectedDestinationStop!,
-          fare: (_selectedRouteDoc!['fare'] as num).toDouble(),
-          distance: _selectedRouteDoc!.data()!.containsKey('distance') ? _selectedRouteDoc!['distance']?.toString() : null,
-          department: _departmentController.text.trim(),
-        );
-
-        // Update user profile document with academic details
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
-          'prn': _prnController.text.trim(),
-          'collegeId': _collegeIdController.text.trim(),
-          'department': _departmentController.text.trim(),
-          'course': _courseController.text.trim(),
-          'year': _yearController.text.trim(),
-          'semester': _semesterController.text.trim(),
-          'mobile': _mobileController.text.trim(),
-        });
-
-        // Sync local auth user state and bus pass provider
-        await ref.read(authControllerProvider.notifier).checkCurrentUser();
-        await ref.read(busPassControllerProvider.notifier).loadBusPass(user.uid);
-
-        if (mounted) {
-          context.pushReplacement(AppRoutes.studentPayment);
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to submit application: ${e.toString()}'),
-              backgroundColor: AppColors.error,
-            ),
-          );
-        }
-      } finally {
-        if (mounted) {
-          setState(() => _isSubmitting = false);
-        }
+        try {
+          final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+          if (doc.exists && doc.data() != null && mounted) {
+            final data = doc.data()!;
+            setState(() {
+              if (_mobileController.text.trim().isEmpty && data['mobile'] != null && data['mobile'].toString().trim().isNotEmpty) {
+                _mobileController.text = data['mobile'].toString().trim();
+              }
+              if (_prnController.text.trim().isEmpty && data['prn'] != null && data['prn'].toString().trim().isNotEmpty) {
+                _prnController.text = data['prn'].toString().trim();
+              }
+              if (_collegeIdController.text.trim().isEmpty && data['collegeId'] != null && data['collegeId'].toString().trim().isNotEmpty) {
+                _collegeIdController.text = data['collegeId'].toString().trim();
+              }
+              if (_departmentController.text.trim().isEmpty && data['department'] != null && data['department'].toString().trim().isNotEmpty) {
+                _departmentController.text = data['department'].toString().trim();
+              }
+              if (_courseController.text.trim().isEmpty && data['course'] != null && data['course'].toString().trim().isNotEmpty) {
+                _courseController.text = data['course'].toString().trim();
+              }
+              if (_yearController.text.trim().isEmpty && data['year'] != null && data['year'].toString().trim().isNotEmpty) {
+                _yearController.text = data['year'].toString().trim();
+              }
+              if (_semesterController.text.trim().isEmpty && data['semester'] != null && data['semester'].toString().trim().isNotEmpty) {
+                _semesterController.text = data['semester'].toString().trim();
+              }
+            });
+          }
+        } catch (_) {}
       }
+    });
+  }
+
+  void _populateFieldsFromUser(UserEntity user) {
+    if (_mobileController.text.trim().isEmpty && user.mobile != null && user.mobile!.trim().isNotEmpty) {
+      _mobileController.text = user.mobile!.trim();
+    }
+    if (_prnController.text.trim().isEmpty && user.prn != null && user.prn!.trim().isNotEmpty) {
+      _prnController.text = user.prn!.trim();
+    }
+    if (_collegeIdController.text.trim().isEmpty && user.collegeId != null && user.collegeId!.trim().isNotEmpty) {
+      _collegeIdController.text = user.collegeId!.trim();
+    }
+    if (_departmentController.text.trim().isEmpty && user.department != null && user.department!.trim().isNotEmpty) {
+      _departmentController.text = user.department!.trim();
+    }
+    if (_courseController.text.trim().isEmpty && user.course != null && user.course!.trim().isNotEmpty) {
+      _courseController.text = user.course!.trim();
+    }
+    if (_yearController.text.trim().isEmpty && user.year != null && user.year!.trim().isNotEmpty) {
+      _yearController.text = user.year!.trim();
+    }
+    if (_semesterController.text.trim().isEmpty && user.semester != null && user.semester!.trim().isNotEmpty) {
+      _semesterController.text = user.semester!.trim();
     }
   }
 
-  // ── Helper: Extract boarding stops (supports old + new schema) ──
+  // ── Helper: Extract boarding stops (supports source + stops array) ──
   List<String> _getBoardingStops(Map<String, dynamic> data) {
-    // New schema: 'stops' list + 'source'
-    final source = data['source'] as String?;
+    final stopsList = <String>[];
+
+    final source = (data['source'] as String?)?.trim();
+    if (source != null && source.isNotEmpty) {
+      stopsList.add(source);
+    }
+
     final stops = data['stops'];
-    if (stops is List && stops.isNotEmpty) {
-      final list = stops.map((s) => s.toString()).toList();
-      if (source != null && source.isNotEmpty && !list.contains(source)) {
-        return [source, ...list];
+    if (stops is List) {
+      for (final s in stops) {
+        final stopStr = s?.toString().trim();
+        if (stopStr != null && stopStr.isNotEmpty && !stopsList.contains(stopStr)) {
+          stopsList.add(stopStr);
+        }
       }
-      return list;
     }
-    // Old schema: 'boardingStops'
-    final boardingStops = data['boardingStops'];
-    if (boardingStops is List) {
-      return boardingStops.map((s) => s.toString()).toList();
+
+    final legacyStops = data['boardingStops'];
+    if (legacyStops is List) {
+      for (final s in legacyStops) {
+        final stopStr = s?.toString().trim();
+        if (stopStr != null && stopStr.isNotEmpty && !stopsList.contains(stopStr)) {
+          stopsList.add(stopStr);
+        }
+      }
     }
-    // Fallback: source only
-    if (source != null && source.isNotEmpty) return [source];
-    return [];
+
+    return stopsList;
   }
 
-  // ── Helper: Extract destination stops (supports old + new schema) ──
-  List<String> _getDestinationStops(Map<String, dynamic> data) {
-    // New schema: 'destination'
-    final destination = data['destination'] as String?;
-    final stops = data['stops'];
-    if (stops is List && stops.isNotEmpty) {
-      final list = stops.map((s) => s.toString()).toList();
-      if (destination != null && destination.isNotEmpty && !list.contains(destination)) {
-        return [...list, destination];
-      }
-      return list;
-    }
-    // Old schema: 'destinationStops'
+  String _getDestinationStop(Map<String, dynamic> data) {
+    final dest = (data['destination'] as String?)?.trim();
+    if (dest != null && dest.isNotEmpty) return dest;
     final destStops = data['destinationStops'];
-    if (destStops is List) {
-      return destStops.map((s) => s.toString()).toList();
+    if (destStops is List && destStops.isNotEmpty) {
+      final s = destStops.first?.toString().trim();
+      if (s != null && s.isNotEmpty) return s;
     }
-    // Fallback: destination only
-    if (destination != null && destination.isNotEmpty) return [destination];
-    return [];
+    return 'ICEM Campus';
   }
 
-  // ── Helper: Route info card shown after selection ──
-  Widget _buildRouteInfoCard(Map<String, dynamic> data) {
-    final routeName = data['routeName'] as String? ?? '';
-    final routeNumber = data['routeNumber'] as String? ?? '';
-    final source = data['source'] as String? ?? '';
-    final destination = data['destination'] as String? ?? '';
+  double? _getRouteFare(Map<String, dynamic>? data) {
+    if (data == null) return null;
     final fareRaw = data['fare'];
-    final fare = fareRaw is num
-        ? fareRaw.toDouble()
-        : double.tryParse(fareRaw?.toString() ?? '') ?? 0.0;
-    final distKm = data['distanceKm'];
-    final distOld = data['distance'] as String?;
-    final distStr = distKm is num
+    if (fareRaw is num) return fareRaw.toDouble();
+    if (fareRaw != null) {
+      return double.tryParse(fareRaw.toString());
+    }
+    return null;
+  }
+
+  void _onProceedToReview() {
+    final user = ref.read(authControllerProvider).user;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please log in to apply for a bus pass.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    if (!_formKey.currentState!.validate()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please complete all required student profile fields.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    if (_selectedRouteDoc == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select an active bus route.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    if (_selectedBoardingStop == null || _selectedBoardingStop!.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select your boarding stop.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    final data = _selectedRouteDoc!.data()!;
+    final fare = _getRouteFare(data);
+    if (fare == null || fare <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selected route has no valid fare configured. Cannot proceed.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _selectedDestinationStop = _getDestinationStop(data);
+      _currentStep = 3;
+    });
+  }
+
+  Future<void> _onContinueToPayment() async {
+    final user = ref.read(authControllerProvider).user;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('User session expired. Please re-login.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    if (_selectedRouteDoc == null || _selectedBoardingStop == null) {
+      setState(() => _currentStep = 1);
+      return;
+    }
+
+    final routeData = _selectedRouteDoc!.data()!;
+    final routeName = routeData['routeName'] as String? ?? 'Bus Route';
+    final routeId = _selectedRouteDoc!.id;
+    final boardingStop = _selectedBoardingStop!;
+    final destinationStop = _selectedDestinationStop ?? _getDestinationStop(routeData);
+    final fare = _getRouteFare(routeData) ?? 0.0;
+    final distKm = routeData['distanceKm'];
+    final distOld = routeData['distance'] as String?;
+    final distanceStr = distKm is num
         ? '${distKm.toStringAsFixed(1)} km'
         : (distOld ?? '');
-    final estimatedTime = data['estimatedTime'] as String? ?? '';
 
+    setState(() => _isSubmitting = true);
+
+    try {
+      // 1. Submit application with initial status: 'Pending'
+      await ref.read(busPassRepositoryProvider).applyForBusPass(
+        uid: user.uid,
+        route: routeName,
+        routeId: routeId,
+        boardingStop: boardingStop,
+        destinationStop: destinationStop,
+        fare: fare,
+        distance: distanceStr.isNotEmpty ? distanceStr : null,
+        department: _departmentController.text.trim(),
+      );
+
+      // 2. Persist updated student profile in Firestore 'users' collection
+      final Map<String, dynamic> userUpdates = {
+        'mobile': _mobileController.text.trim(),
+        'department': _departmentController.text.trim(),
+        'course': _courseController.text.trim(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      if (_prnController.text.trim().isNotEmpty) {
+        userUpdates['prn'] = _prnController.text.trim();
+      }
+      if (_collegeIdController.text.trim().isNotEmpty) {
+        userUpdates['collegeId'] = _collegeIdController.text.trim();
+      }
+      if (_yearController.text.trim().isNotEmpty) {
+        userUpdates['year'] = _yearController.text.trim();
+      }
+      if (_semesterController.text.trim().isNotEmpty) {
+        userUpdates['semester'] = _semesterController.text.trim();
+      }
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).update(userUpdates);
+
+      // 3. Sync local auth and pass providers
+      await ref.read(authControllerProvider.notifier).checkCurrentUser();
+      await ref.read(busPassControllerProvider.notifier).loadBusPass(user.uid);
+
+      if (mounted) {
+        context.pushReplacement(AppRoutes.studentPayment);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to submit application: ${e.toString()}'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
+
+  // ── Helper: Review item row ──
+  Widget _buildReviewRow(
+    String label,
+    String value,
+    IconData icon, {
+    bool isBoldValue = false,
+    bool highlightValue = false,
+    Color? statusColor,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: statusColor ?? AppColors.primaryCrimson),
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 2,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textMuted,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 3,
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: highlightValue ? 15 : 13,
+                fontWeight: isBoldValue || highlightValue ? FontWeight.bold : FontWeight.w600,
+                color: statusColor ??
+                    (highlightValue ? AppColors.primaryCrimson : AppColors.textPrimary),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Step Progress Indicator (Section 9) ──
+  Widget _buildStepIndicator() {
+    final stepLabels = ['01 Student', '02 Route', '03 Boarding', '04 Review'];
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      margin: const EdgeInsets.only(bottom: 22),
       decoration: BoxDecoration(
-        color: AppColors.primaryCrimson.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.primaryCrimson.withOpacity(0.18)),
+        color: AppColors.cardSurface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.borderSubtle),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Route name + number header
-          Row(
-            children: [
-              Padding(padding: EdgeInsets.all(4.0), child: Image.asset('assets/images/bus_logo.png', width: 24, height: 24, fit: BoxFit.contain)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  routeNumber.isNotEmpty
-                      ? '$routeNumber – $routeName'
-                      : routeName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                    color: Color(0xFF0F172A),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          // Source → Destination
-          if (source.isNotEmpty || destination.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const Icon(Icons.trip_origin_rounded,
-                    size: 13, color: Color(0xFF64748B)),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    source.isNotEmpty ? source : 'N/A',
-                    style: const TextStyle(
-                        fontSize: 12, color: Color(0xFF475569)),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6),
-                  child: Icon(Icons.arrow_forward_rounded,
-                      size: 12, color: Color(0xFF94A3B8)),
-                ),
-                const Icon(Icons.flag_rounded,
-                    size: 13, color: AppColors.primaryCrimson),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    destination.isNotEmpty ? destination : 'N/A',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF334155),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ],
-          const Divider(height: 20),
-          // Stats row: Distance | Time | Fare
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              if (distStr.isNotEmpty)
-                _RouteInfoStat(
-                    icon: Icons.straighten_rounded,
-                    label: 'Distance',
-                    value: distStr),
-              if (estimatedTime.isNotEmpty)
-                _RouteInfoStat(
-                    icon: Icons.timer_outlined,
-                    label: 'Travel Time',
-                    value: estimatedTime),
-              _RouteInfoStat(
-                icon: Icons.currency_rupee_rounded,
-                label: 'Fare',
-                value: fare > 0 ? '₹${fare.toStringAsFixed(0)}' : 'N/A',
-                valueColor: AppColors.primaryCrimson,
+              const Text(
+                'APPLY FOR BUS PASS',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.0,
+                  color: AppColors.primaryCrimson,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceElevated,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.borderSubtle),
+                ),
+                child: Text(
+                  'Step ${_currentStep + 1} of 4',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          // Thin crimson progress indicator (Section 9)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: (_currentStep + 1) / 4.0,
+              minHeight: 4,
+              backgroundColor: AppColors.surfaceElevated,
+              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primaryCrimson),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Step names row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(stepLabels.length, (idx) {
+              final isActive = _currentStep == idx;
+              final isDone = _currentStep > idx;
+              return Text(
+                stepLabels[idx],
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
+                  color: isActive
+                      ? AppColors.primaryCrimson
+                      : (isDone ? AppColors.textPrimary : AppColors.textMuted),
+                ),
+              );
+            }),
+          ),
         ],
       ),
+    );
+  }
+
+  // ── Step 1: Student Information ──
+  Widget _buildStep1StudentInfo(ThemeData theme, UserEntity? user) {
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          PremiumCard(
+            borderRadius: 22,
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.person_rounded, size: 20, color: AppColors.primaryCrimson),
+                    SizedBox(width: 8),
+                    Text(
+                      'Personal Information',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: AppColors.textPrimary),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                AppTextField(
+                  label: 'Full Name',
+                  initialValue: user?.fullName ?? '',
+                  readOnly: true,
+                  prefixIcon: Icons.person_outline_rounded,
+                ),
+                const SizedBox(height: 14),
+                AppTextField(
+                  label: 'Email Address',
+                  initialValue: user?.email ?? '',
+                  readOnly: true,
+                  prefixIcon: Icons.email_outlined,
+                ),
+                const SizedBox(height: 14),
+                AppTextField(
+                  label: 'Mobile Number',
+                  hint: '10-digit mobile number',
+                  controller: _mobileController,
+                  keyboardType: TextInputType.phone,
+                  prefixIcon: Icons.phone_iphone_rounded,
+                  validator: (val) {
+                    if (val == null || val.trim().isEmpty) return 'Mobile number is required.';
+                    if (val.trim().length < 10) return 'Enter a valid 10-digit mobile number.';
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          PremiumCard(
+            borderRadius: 22,
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.school_rounded, size: 20, color: AppColors.primaryCrimson),
+                    SizedBox(width: 8),
+                    Text(
+                      'Academic Details',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: AppColors.textPrimary),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                AppTextField(
+                  label: 'PRN Number',
+                  hint: 'Permanent Registration Number',
+                  controller: _prnController,
+                  prefixIcon: Icons.badge_outlined,
+                  validator: (val) {
+                    if ((val == null || val.trim().isEmpty) && _collegeIdController.text.trim().isEmpty) {
+                      return 'PRN Number or College ID is required.';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 14),
+                AppTextField(
+                  label: 'College ID Card Number (Optional)',
+                  hint: 'Badge / ID number',
+                  controller: _collegeIdController,
+                  prefixIcon: Icons.card_membership_rounded,
+                ),
+                const SizedBox(height: 14),
+                AppTextField(
+                  label: 'Department',
+                  hint: 'e.g. Computer Engineering, IT',
+                  controller: _departmentController,
+                  prefixIcon: Icons.business_rounded,
+                  validator: (val) => val == null || val.trim().isEmpty ? 'Department is required.' : null,
+                ),
+                const SizedBox(height: 14),
+                AppTextField(
+                  label: 'Course',
+                  hint: 'e.g. B.Tech, MCA, MBA',
+                  controller: _courseController,
+                  prefixIcon: Icons.menu_book_rounded,
+                  validator: (val) => val == null || val.trim().isEmpty ? 'Course is required.' : null,
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppTextField(
+                        label: 'Year',
+                        hint: 'e.g. FE, SE, TE, BE',
+                        controller: _yearController,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: AppTextField(
+                        label: 'Semester',
+                        hint: 'e.g. Sem 1, Sem 4',
+                        controller: _semesterController,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          PrimaryButton(
+            text: 'Next: Select Route',
+            icon: Icons.arrow_forward_rounded,
+            onPressed: () {
+              if (_formKey.currentState!.validate()) {
+                setState(() => _currentStep = 1);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please complete all required fields.'),
+                    backgroundColor: AppColors.error,
+                  ),
+                );
+              }
+            },
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  // ── Step 2: Route Selection (Section 10) ──
+  Widget _buildStep2SelectRoute(ThemeData theme, AsyncValue<List<DocumentSnapshot<Map<String, dynamic>>>> routesAsync) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Select Your Bus Route',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: AppColors.textPrimary),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Choose the official transit route between your area and ICEM campus.',
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 18),
+        routesAsync.when(
+          loading: () => const Column(
+            children: [
+              LoadingSkeleton.card(height: 140, borderRadius: 22),
+              SizedBox(height: 14),
+              LoadingSkeleton.card(height: 140, borderRadius: 22),
+            ],
+          ),
+          error: (err, _) => Center(
+            child: Text('Error loading routes: $err', style: const TextStyle(color: AppColors.error)),
+          ),
+          data: (routes) {
+            if (routes.isEmpty) {
+              return const EmptyState(
+                icon: Icons.alt_route_rounded,
+                title: 'No Routes Available',
+                description: 'Active bus routes will appear here once published by the transport department.',
+              );
+            }
+
+            return ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: routes.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 14),
+              itemBuilder: (context, index) {
+                final doc = routes[index];
+                final data = doc.data() ?? {};
+                final isSelected = _selectedRouteDoc?.id == doc.id;
+                final routeName = data['routeName'] as String? ?? 'Route ${index + 1}';
+                final routeNumber = data['routeNumber'] as String? ?? '';
+                final source = data['source'] as String? ?? 'Origin';
+                final destination = data['destination'] as String? ?? 'ICEM Campus';
+                final fare = _getRouteFare(data) ?? 4500.0;
+                final stops = _getBoardingStops(data);
+
+                return PremiumCard(
+                  borderRadius: 22,
+                  isSelected: isSelected,
+                  onTap: () {
+                    setState(() {
+                      _selectedRouteDoc = doc;
+                      _selectedBoardingStop = null;
+                      _selectedDestinationStop = null;
+                    });
+                  },
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header Row: Route Name & Badge / Check Icon
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? AppColors.primaryCrimson : AppColors.surfaceElevated,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: isSelected ? AppColors.primaryCrimson : AppColors.borderSubtle,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    routeNumber.isNotEmpty ? routeNumber : 'R-${index + 1}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                      color: isSelected ? Colors.white : AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    routeName.toUpperCase(),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 15,
+                                      color: AppColors.textPrimary,
+                                      letterSpacing: 0.3,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (isSelected)
+                            Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: AppColors.primaryCrimson,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.check, color: Colors.white, size: 14),
+                            )
+                          else
+                            Container(
+                              width: 22,
+                              height: 22,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: AppColors.borderSubtle, width: 2),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Starting Point & Destination
+                      Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: AppColors.primaryCrimson,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(source, style: const TextStyle(fontSize: 13, color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.arrow_forward_rounded, size: 13, color: AppColors.textMuted),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.location_on_rounded, size: 14, color: AppColors.success),
+                          const SizedBox(width: 4),
+                          Text(destination, style: const TextStyle(fontSize: 13, color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+
+                      // Stops Preview (Section 10)
+                      if (stops.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: stops.take(4).map((s) => Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceElevated,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              s,
+                              style: const TextStyle(fontSize: 10.5, color: AppColors.textSecondary),
+                            ),
+                          )).toList(),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      const Divider(height: 1, color: AppColors.borderSubtle),
+                      const SizedBox(height: 12),
+
+                      // Fare and Stops count
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '${stops.length} boarding stops available',
+                            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryCrimson.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppColors.primaryCrimson.withValues(alpha: 0.3)),
+                            ),
+                            child: Text(
+                              '₹${fare.toStringAsFixed(0)}',
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: AppColors.primaryCrimson),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        ),
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            Expanded(
+              flex: 1,
+              child: SecondaryButton(
+                text: 'Back',
+                icon: Icons.arrow_back_rounded,
+                onPressed: () => setState(() => _currentStep = 0),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: PrimaryButton(
+                text: 'Next: Boarding Stop',
+                icon: Icons.arrow_forward_rounded,
+                onPressed: () {
+                  if (_selectedRouteDoc == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please tap to select a route.'),
+                        backgroundColor: AppColors.error,
+                      ),
+                    );
+                    return;
+                  }
+                  setState(() => _currentStep = 2);
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  // ── Step 3: Boarding Stop Timeline Selection (Section 11) ──
+  Widget _buildStep3BoardingStop(ThemeData theme) {
+    if (_selectedRouteDoc == null) {
+      return Center(
+        child: Column(
+          children: [
+            const Text('Please select a route first.', style: TextStyle(color: AppColors.textSecondary)),
+            const SizedBox(height: 12),
+            PrimaryButton(text: 'Go to Route Selection', onPressed: () => setState(() => _currentStep = 1)),
+          ],
+        ),
+      );
+    }
+
+    final routeData = _selectedRouteDoc!.data()!;
+    final routeName = routeData['routeName'] as String? ?? 'Selected Route';
+    final stops = _getBoardingStops(routeData);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        PremiumCard(
+          borderRadius: 20,
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryCrimson.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.directions_bus_rounded, color: AppColors.primaryCrimson, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('SELECTED ROUTE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textMuted, letterSpacing: 0.5)),
+                    const SizedBox(height: 2),
+                    Text(routeName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.textPrimary)),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: () => setState(() => _currentStep = 1),
+                child: const Text('Change', style: TextStyle(color: AppColors.primaryCrimson, fontWeight: FontWeight.bold, fontSize: 12)),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'Select Boarding Stop',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: AppColors.textPrimary),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Choose the specific pickup point where you will board the bus every day.',
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 18),
+        if (stops.isEmpty)
+          const EmptyState(
+            icon: Icons.location_off_rounded,
+            title: 'No Stops Found',
+            description: 'No boarding stops configured for this route. Please contact administration.',
+          )
+        else
+          // Vertical Route Timeline (Section 11)
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: stops.length,
+            itemBuilder: (context, index) {
+              final stop = stops[index];
+              final isSelected = _selectedBoardingStop == stop;
+              final isLast = index == stops.length - 1;
+
+              return GestureDetector(
+                onTap: () => setState(() => _selectedBoardingStop = stop),
+                behavior: HitTestBehavior.opaque,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Timeline indicator column
+                    Column(
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          width: 16,
+                          height: 16,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isSelected ? AppColors.primaryCrimson : AppColors.surfaceElevated,
+                            border: Border.all(
+                              color: isSelected ? AppColors.primaryCrimson : AppColors.borderSubtle,
+                              width: isSelected ? 3 : 2,
+                            ),
+                            boxShadow: isSelected
+                                ? [
+                                    BoxShadow(
+                                      color: AppColors.primaryCrimson.withValues(alpha: 0.5),
+                                      blurRadius: 8,
+                                      spreadRadius: 1,
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                          child: isSelected
+                              ? const Center(
+                                  child: Icon(Icons.check, size: 9, color: Colors.white),
+                                )
+                              : null,
+                        ),
+                        if (!isLast)
+                          Container(
+                            width: 2,
+                            height: 44,
+                            color: isSelected
+                                ? AppColors.primaryCrimson.withValues(alpha: 0.6)
+                                : AppColors.borderSubtle,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(width: 14),
+
+                    // Stop card
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 12.0),
+                        child: PremiumCard(
+                          borderRadius: 16,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          isSelected: isSelected,
+                          onTap: () => setState(() => _selectedBoardingStop = stop),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  stop,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                    color: isSelected ? AppColors.primaryCrimson : AppColors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                              if (isSelected)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryCrimson.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    'SELECTED',
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.primaryCrimson),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            Expanded(
+              flex: 1,
+              child: SecondaryButton(
+                text: 'Back',
+                icon: Icons.arrow_back_rounded,
+                onPressed: () => setState(() => _currentStep = 1),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: PrimaryButton(
+                text: 'Next: Review',
+                icon: Icons.arrow_forward_rounded,
+                onPressed: _onProceedToReview,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  // ── Step 4: Review Screen (Section 12) ──
+  Widget _buildStep4Review(ThemeData theme, UserEntity? user) {
+    final routeData = _selectedRouteDoc?.data() ?? {};
+    final routeName = routeData['routeName'] as String? ?? 'Route';
+    final routeNumber = routeData['routeNumber'] as String? ?? '';
+    final source = routeData['source'] as String? ?? '';
+    final destStop = _selectedDestinationStop ?? _getDestinationStop(routeData);
+    final fare = _getRouteFare(routeData) ?? 4500.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Review Application',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: AppColors.textPrimary),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Please verify your transportation details before continuing to payment.',
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 18),
+
+        // Premium summary card (Section 12)
+        PremiumCard(
+          borderRadius: 24,
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // STUDENT SECTION
+              const Text('STUDENT', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryCrimson, letterSpacing: 0.8)),
+              const SizedBox(height: 10),
+              _buildReviewRow('Full Name', user?.fullName ?? 'Student', Icons.person_outline_rounded),
+              _buildReviewRow('Mobile Number', _mobileController.text.trim(), Icons.phone_iphone_rounded),
+              if (_prnController.text.trim().isNotEmpty)
+                _buildReviewRow('Student ID / PRN', _prnController.text.trim(), Icons.badge_outlined),
+              _buildReviewRow('Department', _departmentController.text.trim(), Icons.business_rounded),
+              _buildReviewRow('Course', _courseController.text.trim(), Icons.school_outlined),
+
+              const Divider(height: 28, color: AppColors.borderSubtle),
+
+              // ROUTE SECTION
+              const Text('ROUTE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryCrimson, letterSpacing: 0.8)),
+              const SizedBox(height: 10),
+              _buildReviewRow('Route', routeNumber.isNotEmpty ? '$routeNumber – $routeName' : routeName, Icons.directions_bus_rounded, isBoldValue: true),
+              if (source.isNotEmpty)
+                _buildReviewRow('Starting Point', source, Icons.trip_origin_rounded),
+              _buildReviewRow('Boarding Stop', _selectedBoardingStop ?? 'Selected Stop', Icons.location_on_rounded, highlightValue: true),
+              _buildReviewRow('Destination', destStop, Icons.flag_rounded),
+              _buildReviewRow('Validity', '6 Months (One Semester)', Icons.event_available_rounded),
+
+              const Divider(height: 28, color: AppColors.borderSubtle),
+
+              // PAYMENT SECTION (Section 12)
+              const Text('PAYMENT', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryCrimson, letterSpacing: 0.8)),
+              const SizedBox(height: 14),
+
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceElevated,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.borderSubtle),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Bus Pass Fee', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                        SizedBox(height: 3),
+                        Text('One Semester Transport', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                      ],
+                    ),
+                    Text(
+                      '₹${fare.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.primaryCrimson,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // Action Buttons: Edit and Continue to Payment
+        Row(
+          children: [
+            Expanded(
+              flex: 1,
+              child: SecondaryButton(
+                text: 'Edit',
+                icon: Icons.edit_rounded,
+                onPressed: () => setState(() => _currentStep = 0),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: PrimaryButton(
+                text: 'CONTINUE TO PAYMENT',
+                icon: Icons.payment_rounded,
+                isLoading: _isSubmitting,
+                onPressed: _onContinueToPayment,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+      ],
     );
   }
 
@@ -365,281 +1232,64 @@ class _ApplyPassScreenState extends ConsumerState<ApplyPassScreen> {
     final user = ref.watch(authControllerProvider).user;
     final routesAsync = ref.watch(busRoutesStreamProvider);
 
+    final String appBarTitle;
+    switch (_currentStep) {
+      case 0:
+        appBarTitle = 'Step 1: Student Information';
+        break;
+      case 1:
+        appBarTitle = 'Step 2: Select Route';
+        break;
+      case 2:
+        appBarTitle = 'Step 3: Boarding Stop';
+        break;
+      case 3:
+      default:
+        appBarTitle = 'Step 4: Review Application';
+        break;
+    }
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Apply for Bus Pass')),
+      backgroundColor: AppColors.bgDark,
+      appBar: AppBar(
+        title: Text(
+          appBarTitle,
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: AppColors.textPrimary),
+        ),
+        backgroundColor: AppColors.bgDark,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary),
+          onPressed: () {
+            if (_currentStep > 0) {
+              setState(() => _currentStep--);
+            } else {
+              context.pop();
+            }
+          },
+        ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(color: AppColors.borderSubtle, height: 1),
+        ),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.all(24.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Section 1: Personal Details
-                Text(
-                  'Personal Details',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: AppColors.primaryCrimson),
-                ),
-                const SizedBox(height: 12),
-                
-                GlassCard(
-                  blur: 10,
-                  borderColor: AppColors.primaryCrimson.withOpacity(0.3),
-                  opacity: 0.04,
-                  child: Column(
-                    children: [
-                      // Full Name (Auto-filled & Read-only)
-                      TextFormField(
-                        initialValue: user?.fullName ?? '',
-                        readOnly: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Full Name',
-                          prefixIcon: Icon(Icons.person_outline),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      // Email (Auto-filled & Read-only)
-                      TextFormField(
-                        initialValue: user?.email ?? '',
-                        readOnly: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Email Address',
-                          prefixIcon: Icon(Icons.email_outlined),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      // PRN Number
-                      TextFormField(
-                        controller: _prnController,
-                        decoration: const InputDecoration(
-                          labelText: 'PRN Number',
-                          prefixIcon: Icon(Icons.badge_outlined),
-                          hintText: 'Enter college registration PRN',
-                        ),
-                        validator: (val) => val == null || val.trim().isEmpty ? 'PRN Number is required.' : null,
-                      ),
-                      const SizedBox(height: 16),
-                      // College ID
-                      TextFormField(
-                        controller: _collegeIdController,
-                        decoration: const InputDecoration(
-                          labelText: 'College ID Card Number',
-                          prefixIcon: Icon(Icons.card_membership_rounded),
-                          hintText: 'Enter college ID badge number',
-                        ),
-                        validator: (val) => val == null || val.trim().isEmpty ? 'College ID is required.' : null,
-                      ),
-                      const SizedBox(height: 16),
-                      // Department
-                      TextFormField(
-                        controller: _departmentController,
-                        decoration: const InputDecoration(
-                          labelText: 'Department',
-                          prefixIcon: Icon(Icons.business_rounded),
-                          hintText: 'e.g. Computer Engineering, Applied Science',
-                        ),
-                        validator: (val) => val == null || val.trim().isEmpty ? 'Department is required.' : null,
-                      ),
-                      const SizedBox(height: 16),
-                      // Course
-                      TextFormField(
-                        controller: _courseController,
-                        decoration: const InputDecoration(
-                          labelText: 'Course',
-                          prefixIcon: Icon(Icons.school_outlined),
-                          hintText: 'e.g. B.Tech, MCA, BCA',
-                        ),
-                        validator: (val) => val == null || val.trim().isEmpty ? 'Course is required.' : null,
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      Row(
-                        children: [
-                          // Year
-                          Expanded(
-                            child: TextFormField(
-                              controller: _yearController,
-                              decoration: const InputDecoration(
-                                labelText: 'Year',
-                                hintText: 'e.g. FE, SE, TE, BE',
-                              ),
-                              validator: (val) => val == null || val.trim().isEmpty ? 'Required' : null,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          // Semester
-                          Expanded(
-                            child: TextFormField(
-                              controller: _semesterController,
-                              decoration: const InputDecoration(
-                                labelText: 'Semester',
-                                hintText: 'e.g. Sem 1, Sem V',
-                              ),
-                              validator: (val) => val == null || val.trim().isEmpty ? 'Required' : null,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      // Mobile Number
-                      TextFormField(
-                        controller: _mobileController,
-                        keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(
-                          labelText: 'Mobile Number',
-                          prefixIcon: Icon(Icons.phone_iphone_rounded),
-                          hintText: '10-digit mobile number',
-                        ),
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) return 'Mobile number is required.';
-                          if (val.trim().length < 10) return 'Enter a valid 10-digit number.';
-                          return null;
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 28),
-
-                // Section 2: Travel Details
-                Text(
-                  'Travel Details & Route',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: AppColors.primaryCrimson),
-                ),
-                const SizedBox(height: 12),
-
-                GlassCard(
-                  blur: 10,
-                  borderColor: AppColors.primaryCrimson.withOpacity(0.3),
-                  opacity: 0.04,
-                  child: routesAsync.when(
-                    loading: () => const Center(child: CircularProgressIndicator()),
-                    error: (err, stack) => Center(child: Text('Error: $err')),
-                    data: (routesSnapshot) {
-                      final routes = routesSnapshot.docs;
-
-                      if (routes.isEmpty) {
-                        return Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            children: [
-                              Image.asset('assets/images/bus_logo.png', width: 40, height: 40, fit: BoxFit.contain),
-                              const SizedBox(height: 10),
-                              const Text(
-                                'No active routes available.',
-                                style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                'Please contact the administrator to add routes.',
-                                style: TextStyle(color: AppColors.textLight, fontSize: 12),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Select Route — shows routeNumber + name in label
-                          DropdownButtonFormField<String>(
-                            value: _selectedRouteDoc?.id,
-                            decoration: InputDecoration(
-                              labelText: 'Select Route',
-                              prefixIcon: Padding(padding: const EdgeInsets.all(12.0), child: Image.asset('assets/images/bus_logo.png', width: 24, height: 24, fit: BoxFit.contain)),
-                            ),
-                            items: routes.map((doc) {
-                              final data = doc.data();
-                              final routeName = data['routeName'] as String? ?? '';
-                              final routeNumber = data['routeNumber'] as String? ?? '';
-                              final label = routeNumber.isNotEmpty
-                                  ? '$routeNumber – $routeName'
-                                  : routeName;
-                              return DropdownMenuItem<String>(
-                                value: doc.id,
-                                child: Text(label, overflow: TextOverflow.ellipsis),
-                              );
-                            }).toList(),
-                            onChanged: (routeId) {
-                              setState(() {
-                                _selectedRouteDoc = routes.firstWhere((doc) => doc.id == routeId)
-                                    as DocumentSnapshot<Map<String, dynamic>>?;
-                                _selectedBoardingStop = null;
-                                _selectedDestinationStop = null;
-                              });
-                            },
-                            validator: (val) => val == null ? 'Please select a route.' : null,
-                          ),
-
-                          // Auto-display: Source, Destination, Distance, Fare
-                          if (_selectedRouteDoc != null) ...[
-                            const SizedBox(height: 16),
-                            _buildRouteInfoCard(_selectedRouteDoc!.data()!),
-                          ],
-                          const SizedBox(height: 16),
-
-                          // Select Boarding Stop — supports both old boardingStops and new stops field
-                          DropdownButtonFormField<String>(
-                            value: _selectedBoardingStop,
-                            disabledHint: const Text('Select a route first'),
-                            decoration: const InputDecoration(
-                              labelText: 'Select Boarding Stop',
-                              prefixIcon: Icon(Icons.location_on_outlined),
-                            ),
-                            items: _selectedRouteDoc == null
-                                ? null
-                                : _getBoardingStops(_selectedRouteDoc!.data()!).map((stop) {
-                                    return DropdownMenuItem<String>(
-                                      value: stop,
-                                      child: Text(stop),
-                                    );
-                                  }).toList(),
-                            onChanged: _selectedRouteDoc == null
-                                ? null
-                                : (stop) => setState(() => _selectedBoardingStop = stop),
-                            validator: (val) => val == null ? 'Please select a boarding stop.' : null,
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Select Destination Stop — supports both old destinationStops and new stops/destination field
-                          DropdownButtonFormField<String>(
-                            value: _selectedDestinationStop,
-                            disabledHint: const Text('Select a route first'),
-                            decoration: const InputDecoration(
-                              labelText: 'Select Destination Stop',
-                              prefixIcon: Icon(Icons.flag_outlined),
-                            ),
-                            items: _selectedRouteDoc == null
-                                ? null
-                                : _getDestinationStops(_selectedRouteDoc!.data()!).map((stop) {
-                                    return DropdownMenuItem<String>(
-                                      value: stop,
-                                      child: Text(stop),
-                                    );
-                                  }).toList(),
-                            onChanged: _selectedRouteDoc == null
-                                ? null
-                                : (stop) => setState(() => _selectedDestinationStop = stop),
-                            validator: (val) => val == null ? 'Please select a destination stop.' : null,
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-
-                const SizedBox(height: 36),
-                PrimaryButton(
-                  text: 'Submit & Proceed to Payment',
-                  isLoading: _isSubmitting,
-                  onPressed: _onApplyPressed,
-                ),
-              ],
-            ),
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildStepIndicator(),
+              if (_currentStep == 0)
+                _buildStep1StudentInfo(theme, user)
+              else if (_currentStep == 1)
+                _buildStep2SelectRoute(theme, routesAsync)
+              else if (_currentStep == 2)
+                _buildStep3BoardingStop(theme)
+              else
+                _buildStep4Review(theme, user),
+            ],
           ),
         ),
       ),
@@ -648,7 +1298,7 @@ class _ApplyPassScreenState extends ConsumerState<ApplyPassScreen> {
 }
 
 // ==========================================
-// RENEW BUS PASS SCREEN
+// RENEW BUS PASS SCREEN (Luxury Dark)
 // ==========================================
 class RenewPassScreen extends ConsumerWidget {
   const RenewPassScreen({super.key});
@@ -659,22 +1309,37 @@ class RenewPassScreen extends ConsumerWidget {
     final busPassState = ref.watch(busPassControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Renew Bus Pass')),
+      backgroundColor: AppColors.bgDark,
+      appBar: AppBar(
+        title: const Text('Renew Bus Pass', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: AppColors.textPrimary)),
+        backgroundColor: AppColors.bgDark,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary),
+          onPressed: () => context.pop(),
+        ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(color: AppColors.borderSubtle, height: 1),
+        ),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.all(22.0),
           child: busPassState.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, stack) => Center(child: Text('Error: $err')),
+            loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primaryCrimson)),
+            error: (err, stack) => Center(child: Text('Error: $err', style: const TextStyle(color: AppColors.error))),
             data: (pass) {
               if (pass == null) {
-                return Center(
-                  child: Column(
-                    children: [
-                      const Icon(Icons.card_membership_rounded, size: 64, color: AppColors.textLight),
-                      const SizedBox(height: 16),
-                      Text('No active pass record found.', style: theme.textTheme.titleMedium),
-                    ],
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 60),
+                    child: EmptyState(
+                      icon: Icons.card_membership_rounded,
+                      title: 'No Active Pass Found',
+                      description: 'No existing bus pass record was found to renew.',
+                    ),
                   ),
                 );
               }
@@ -682,26 +1347,37 @@ class RenewPassScreen extends ConsumerWidget {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  GlassCard(
-                    blur: 12,
-                    borderColor: AppColors.primaryCrimson,
-                    opacity: 0.05,
+                  PremiumCard(
+                    borderRadius: 24,
+                    padding: const EdgeInsets.all(22),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.autorenew_rounded, color: AppColors.primaryCrimson, size: 22),
+                            SizedBox(width: 10),
+                            Text(
+                              'Pass Renewal Details',
+                              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.textPrimary),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
                         _infoRow('Pass ID', pass.passId, theme),
-                        const Divider(height: 24),
+                        const Divider(height: 24, color: AppColors.borderSubtle),
                         _infoRow('Selected Route', pass.route, theme),
-                        const Divider(height: 24),
+                        const Divider(height: 24, color: AppColors.borderSubtle),
                         _infoRow('Pass Expiry', pass.expiryDate.toString().substring(0, 10), theme),
-                        const Divider(height: 24),
+                        const Divider(height: 24, color: AppColors.borderSubtle),
                         _infoRow('Payment Status', pass.paymentStatus, theme, color: AppColors.primaryCrimson),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 36),
+                  const SizedBox(height: 32),
                   PrimaryButton(
                     text: 'Proceed to Payment',
+                    icon: Icons.payment_rounded,
                     isLoading: busPassState.isLoading,
                     onPressed: () async {
                       final success = await ref.read(busPassControllerProvider.notifier).renewPass();
@@ -723,38 +1399,47 @@ class RenewPassScreen extends ConsumerWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w500, color: AppColors.textSecondary)),
-        Text(val, style: TextStyle(fontWeight: FontWeight.bold, color: color ?? AppColors.textPrimary)),
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13, color: AppColors.textMuted)),
+        Text(val, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: color ?? AppColors.textPrimary)),
       ],
     );
   }
 }
 
 // ==========================================
-// DIGITAL BUS PASS SCREEN (STANDALONE SUB-SCREEN PLACEHOLDER)
+// DIGITAL BUS PASS SCREEN (Section 14: Luxury Mobility Card)
 // ==========================================
 class DigitalPassScreen extends ConsumerWidget {
   const DigitalPassScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     final userState = ref.watch(authControllerProvider);
     final busPassState = ref.watch(busPassControllerProvider);
     final user = userState.user;
 
     return Scaffold(
+      backgroundColor: AppColors.bgDark,
       appBar: AppBar(
-        title: const Text('My Digital Pass'),
+        title: const Text(
+          'ICEM Digital Bus Pass',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: AppColors.textPrimary),
+        ),
+        backgroundColor: AppColors.bgDark,
+        elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary),
           onPressed: () => context.go(AppRoutes.studentDashboard),
+        ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(color: AppColors.borderSubtle, height: 1),
         ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
           child: busPassState.when(
             loading: () => const Center(
               child: Padding(
@@ -769,272 +1454,451 @@ class DigitalPassScreen extends ConsumerWidget {
               ),
             ),
             data: (pass) {
-              final isActive = pass != null && (pass.status == 'Active' || pass.status == 'Approved');
-              final isPaid = pass != null && (pass.paymentStatus == 'Paid' || pass.paymentStatus == 'Success');
+              final isRevoked = pass != null && pass.isRevoked;
+              final isExpired = pass != null && pass.isExpired;
+              final isRejected = pass != null && pass.status.trim().toLowerCase() == 'rejected';
+              final isPaid = pass != null && pass.isPaid;
+              final isApproved = pass != null && pass.isApproved;
+              final isActive = pass != null && pass.isActive;
 
-              if (pass == null || !isActive || !isPaid) {
+              // If pass is not active, display appropriate luxury status screen
+              if (pass == null || !isActive) {
+                String heading = "You do not have an active digital bus pass.";
+                String subtext = "Please complete application and payment to activate pass.";
+                String btnText = "Apply for Bus Pass";
+                IconData statusIcon = Icons.badge_outlined;
+                Color statusColor = AppColors.textMuted;
+                VoidCallback btnAction = () => context.push(AppRoutes.studentApply);
+
+                if (isRevoked) {
+                  heading = "Pass Revoked";
+                  subtext = "Your college bus pass has been revoked by the administration. Please contact the ICEM transport office for inquiries.";
+                  statusIcon = Icons.block_rounded;
+                  statusColor = AppColors.error;
+                  btnText = "View Pass History";
+                  btnAction = () => context.push('/student/pass-history');
+                } else if (isExpired) {
+                  heading = "Pass Expired";
+                  subtext = "Your bus pass validity has expired. Please renew your pass to resume college bus transport services.";
+                  statusIcon = Icons.warning_amber_rounded;
+                  statusColor = AppColors.warning;
+                  btnText = "Renew Bus Pass";
+                  btnAction = () => context.push(AppRoutes.studentRenew);
+                } else if (isRejected) {
+                  heading = "Application Rejected";
+                  subtext = "Your bus pass application was rejected by ICEM administration. You may review the details and re-apply.";
+                  statusIcon = Icons.cancel_rounded;
+                  statusColor = AppColors.error;
+                  btnText = "Re-apply for Bus Pass";
+                  btnAction = () => context.push(AppRoutes.studentApply);
+                } else if (isPaid && !isApproved) {
+                  heading = "Paid — Waiting for Admin Approval";
+                  subtext = "Your payment has been verified. Your active digital pass and QR code will activate as soon as the college administration approves your application.";
+                  statusIcon = Icons.hourglass_top_rounded;
+                  statusColor = AppColors.info;
+                  btnText = "Return to Dashboard";
+                  btnAction = () => context.go(AppRoutes.studentDashboard);
+                } else if (!isPaid && pass != null) {
+                  heading = "Payment Pending";
+                  subtext = "Your application has been received, but payment has not been completed. Please complete payment to submit for approval.";
+                  statusIcon = Icons.payment_rounded;
+                  statusColor = AppColors.warning;
+                  btnText = "Complete Payment";
+                  btnAction = () => context.push(AppRoutes.studentPayment);
+                }
+
                 return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const SizedBox(height: 60),
-                      const Icon(Icons.qr_code_scanner_rounded, size: 80, color: AppColors.textLight),
-                      const SizedBox(height: 20),
-                      const Text(
-                        "You do not have an active digital bus pass.",
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textSecondary),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 40.0, horizontal: 16.0),
+                    child: PremiumCard(
+                      borderRadius: 26,
+                      padding: const EdgeInsets.all(28),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(22),
+                            decoration: BoxDecoration(
+                              color: statusColor.withValues(alpha: 0.12),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+                            ),
+                            child: Icon(statusIcon, size: 54, color: statusColor),
+                          ),
+                          const SizedBox(height: 22),
+                          Text(
+                            heading,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18,
+                              color: statusColor == AppColors.textMuted
+                                  ? AppColors.textPrimary
+                                  : statusColor,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            subtext,
+                            style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 28),
+                          PrimaryButton(
+                            text: btnText,
+                            onPressed: btnAction,
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        "Please complete application and payment to activate pass.",
-                        style: TextStyle(fontSize: 12, color: AppColors.textLight),
-                      ),
-                      const SizedBox(height: 28),
-                      PrimaryButton(
-                        text: 'Apply for Bus Pass',
-                        onPressed: () => context.push(AppRoutes.studentApply),
-                      ),
-                    ],
+                    ),
                   ),
                 );
               }
 
+              // SECTION 14: ACTIVE PASS DISPLAY (Luxury Dark Membership Card)
               final String name = user?.fullName ?? 'Student';
-              final String prn = user?.prn ?? 'N/A';
-              final String collegeId = user?.collegeId ?? 'N/A';
+              final String prn = user?.prn ?? user?.collegeId ?? 'N/A';
+              final String course = pass.course ?? user?.course ?? pass.department ?? user?.department ?? 'Engineering';
+              final String academicYear = pass.year ?? user?.year ?? '2025-2026';
               final String photoUrl = user?.photoUrl ?? '';
-              final String validityDate = pass.expiryDate.toString().substring(0, 10);
+              final String passNum = pass.effectivePassNumber;
+              final String appId = pass.applicationId ?? pass.passId;
+
+              final String validFromStr = pass.validFrom != null
+                  ? '${pass.validFrom!.day.toString().padLeft(2, '0')}/${pass.validFrom!.month.toString().padLeft(2, '0')}/${pass.validFrom!.year}'
+                  : 'N/A';
+              final String validUntilStr =
+                  '${pass.effectiveValidUntil.day.toString().padLeft(2, '0')}/${pass.effectiveValidUntil.month.toString().padLeft(2, '0')}/${pass.effectiveValidUntil.year}';
 
               return Column(
                 children: [
-                  // Pass Card
-                  GlassCard(
-                    blur: 16,
-                    borderColor: AppColors.accentGold,
-                    color: AppColors.primaryCrimson,
-                    opacity: 0.1,
-                    padding: const EdgeInsets.all(24.0),
+                  // Luxury Digital Pass Card Container
+                  PremiumCard(
+                    borderRadius: 26,
+                    isSelected: true,
+                    padding: EdgeInsets.zero,
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Card Header
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'ICEM DIGITAL BUS PASS',
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    color: AppColors.accentGold,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 0.8,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                                const Text('Indira College Network', style: TextStyle(color: Colors.white70, fontSize: 10)),
-                              ],
-                            ),
-                            const Icon(Icons.nfc_rounded, color: AppColors.accentGold, size: 28),
-                          ],
-                        ),
-                        const Divider(color: Colors.white24, height: 28),
-
-                        // Student Details Row with Photo
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Student Photo
-                            Container(
-                              width: 80,
-                              height: 80,
-                              decoration: BoxDecoration(
-                                color: Colors.white24,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: AppColors.accentGold.withOpacity(0.5), width: 1.5),
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(10),
-                                child: photoUrl.isNotEmpty && photoUrl.startsWith('http')
-                                    ? Image.network(photoUrl, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => const Icon(Icons.person, color: Colors.white70, size: 40))
-                                    : const Icon(Icons.person, color: Colors.white70, size: 40),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            // Details
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    name.toUpperCase(),
-                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text('PRN: $prn', style: const TextStyle(color: Colors.white70, fontSize: 11)),
-                                  const SizedBox(height: 2),
-                                  Text('College ID: $collegeId', style: const TextStyle(color: Colors.white70, fontSize: 11)),
-                                  const SizedBox(height: 2),
-                                  Text('Dept: ${pass.department ?? user?.department ?? "N/A"}', style: const TextStyle(color: Colors.white70, fontSize: 11)),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Route Details
+                        // Card Header: College Brand & Title (Section 14: ICEM, BUS PASS)
                         Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(12),
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [AppColors.darkCrimson, AppColors.primaryCrimson],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.only(
+                              topLeft: Radius.circular(25),
+                              topRight: Radius.circular(25),
+                            ),
                           ),
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
                                 children: [
-                                  Padding(padding: EdgeInsets.all(2.0), child: Image.asset('assets/images/bus_logo.png', width: 16, height: 16, fit: BoxFit.contain)),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      pass.route,
-                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                  Container(
+                                    padding: const EdgeInsets.all(7),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Icon(
+                                      Icons.directions_bus_rounded,
+                                      color: AppColors.primaryCrimson,
+                                      size: 24,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'ICEM',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 16,
+                                            letterSpacing: 1.5,
+                                          ),
+                                        ),
+                                        Text(
+                                          'Indira College of Engineering and Management',
+                                          style: TextStyle(
+                                            color: Colors.white70,
+                                            fontWeight: FontWeight.w500,
+                                            fontSize: 10.5,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
                               ),
-                              const Divider(color: Colors.white10, height: 16),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text('BOARDING', style: TextStyle(color: Colors.white60, fontSize: 9)),
-                                      Text(pass.boardingStop, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 11)),
-                                    ],
-                                  ),
-                                  const Icon(Icons.arrow_forward_rounded, color: Colors.white54, size: 14),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      const Text('DESTINATION', style: TextStyle(color: Colors.white60, fontSize: 9)),
-                                      Text(pass.destinationStop, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 11)),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              const Divider(color: Colors.white10, height: 16),
-                              Row(
-                                children: [
-                                  Image.asset('assets/images/bus_logo.png', width: 16, height: 16),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      'BUS: ${pass.busNumber ?? "Not Assigned"}',
-                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                              const SizedBox(height: 12),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.3),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                                ),
+                                child: const Center(
+                                  child: Text(
+                                    'BUS PASS',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 2.5,
+                                      fontSize: 12.5,
                                     ),
                                   ),
-                                ],
+                                ),
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 24),
 
-                        // QR Code center area
-                        Center(
+                        // Card Body: Details & Photo
+                        Padding(
+                          padding: const EdgeInsets.all(20.0),
                           child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.2),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 4),
-                                    )
-                                  ]
-                                ),
-                                child: (pass.qrCode != null && pass.qrCode!.isNotEmpty)
-                                    ? QrImageView(
-                                        data: pass.qrCode!,
+                              // Photo & Student Details Row
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Student Photo with Crimson ring
+                                  Container(
+                                    width: 84,
+                                    height: 96,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.surfaceElevated,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: AppColors.primaryCrimson, width: 2),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: AppColors.primaryCrimson.withValues(alpha: 0.2),
+                                          blurRadius: 10,
+                                        ),
+                                      ],
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: photoUrl.isNotEmpty && photoUrl.startsWith('http')
+                                          ? Image.network(
+                                              photoUrl,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stackTrace) =>
+                                                  const Icon(Icons.person, color: AppColors.textMuted, size: 48),
+                                            )
+                                          : const Icon(Icons.person, color: AppColors.textMuted, size: 48),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 14),
+
+                                  // Student Info
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          name.toUpperCase(),
+                                          style: const TextStyle(
+                                            color: AppColors.textPrimary,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 16,
+                                          ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 6),
+                                        _infoChip('Student ID', prn),
+                                        const SizedBox(height: 3),
+                                        _infoChip('Course', course),
+                                        const SizedBox(height: 3),
+                                        _infoChip('Academic Year', academicYear),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 18),
+                              const Divider(color: AppColors.borderSubtle, height: 1),
+                              const SizedBox(height: 14),
+
+                              // Pass Number & Application ID
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _metaBlock('PASS NUMBER', passNum, isCrimson: true),
+                                  ),
+                                  Container(width: 1, height: 32, color: AppColors.borderSubtle),
+                                  Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(left: 12),
+                                      child: _metaBlock('APPLICATION ID', appId),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+                              const Divider(color: AppColors.borderSubtle, height: 1),
+                              const SizedBox(height: 14),
+
+                              // Route & Boarding Stop
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _metaBlock('ROUTE', pass.effectiveRouteName),
+                                  ),
+                                  Container(width: 1, height: 32, color: AppColors.borderSubtle),
+                                  Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(left: 12),
+                                      child: _metaBlock('BOARDING STOP', pass.boardingStop, isCrimson: true),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+                              const Divider(color: AppColors.borderSubtle, height: 1),
+                              const SizedBox(height: 14),
+
+                              // Valid From & Valid Until
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _metaBlock('VALID FROM', validFromStr),
+                                  ),
+                                  Container(width: 1, height: 32, color: AppColors.borderSubtle),
+                                  Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(left: 12),
+                                      child: _metaBlock('VALID UNTIL', validUntilStr, isBold: true),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 18),
+
+                              // 3 Status Badges: Payment, Approval, Pass Status (Section 14: ACTIVE)
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  _statusPill('Payment', 'PAID ✓', AppColors.success),
+                                  _statusPill('Approval', 'APPROVED ✓', AppColors.success),
+                                  _statusPill('Status', 'ACTIVE', AppColors.primaryCrimson, isSolid: true),
+                                ],
+                              ),
+                              const SizedBox(height: 24),
+
+                              // Large Readable QR Code with Crimson Accents (Section 14)
+                              Center(
+                                child: Column(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(14),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(color: AppColors.primaryCrimson.withValues(alpha: 0.4), width: 1.8),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: AppColors.primaryCrimson.withValues(alpha: 0.18),
+                                            blurRadius: 16,
+                                            offset: const Offset(0, 6),
+                                          ),
+                                        ],
+                                      ),
+                                      child: QrImageView(
+                                        data: jsonEncode({
+                                          'type': 'ICEM_BUS_PASS',
+                                          'passNumber': passNum,
+                                          'passId': pass.passId,
+                                          'studentId': pass.uid,
+                                        }),
                                         version: QrVersions.auto,
-                                        size: 160,
+                                        size: 180,
                                         gapless: false,
+                                        backgroundColor: Colors.white,
                                         eyeStyle: const QrEyeStyle(
                                           eyeShape: QrEyeShape.square,
                                           color: AppColors.primaryCrimson,
                                         ),
                                         dataModuleStyle: const QrDataModuleStyle(
                                           dataModuleShape: QrDataModuleShape.square,
-                                          color: Colors.black,
-                                        ),
-                                      )
-                                    : const SizedBox(
-                                        width: 160,
-                                        height: 160,
-                                        child: Center(
-                                          child: CircularProgressIndicator(
-                                            color: AppColors.primaryCrimson,
-                                          ),
+                                          color: AppColors.bgDark,
                                         ),
                                       ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    const Text(
+                                      'SCAN TO VERIFY AUTHORIZATION',
+                                      style: TextStyle(
+                                        color: AppColors.primaryCrimson,
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 0.8,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                              const SizedBox(height: 8),
-                              const Text('SCAN AT BOARDING TERMINAL', style: TextStyle(color: AppColors.accentGold, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 24),
 
-                        // Validity, Pass Status, and Pass ID Footer
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('PASS ID / NO', style: TextStyle(color: Colors.white60, fontSize: 9)),
-                                Text(pass.passId, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                              ],
+                        // Card Footer: Security & Hologram bar
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
+                          decoration: const BoxDecoration(
+                            color: AppColors.surfaceElevated,
+                            borderRadius: BorderRadius.only(
+                              bottomLeft: Radius.circular(25),
+                              bottomRight: Radius.circular(25),
                             ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                const Text('STATUS', style: TextStyle(color: Colors.white60, fontSize: 9)),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white24,
-                                    borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.verified_user_rounded, size: 14, color: AppColors.success),
+                                  SizedBox(width: 5),
+                                  Text(
+                                    'OFFICIALLY ISSUED BY ICEM',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.textSecondary,
+                                      letterSpacing: 0.5,
+                                    ),
                                   ),
-                                  child: Text(
-                                    pass.status.toUpperCase(),
-                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10),
-                                  ),
+                                ],
+                              ),
+                              Text(
+                                'NON-TRANSFERABLE',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.textMuted,
+                                  letterSpacing: 0.5,
                                 ),
-                              ],
-                            ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                const Text('VALIDITY UNTIL', style: TextStyle(color: Colors.white60, fontSize: 9)),
-                                Text(validityDate, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                              ],
-                            ),
-                          ],
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 24),
                 ],
               );
             },
@@ -1043,31 +1907,115 @@ class DigitalPassScreen extends ConsumerWidget {
       ),
     );
   }
+
+  Widget _infoChip(String label, String value) {
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: '$label: ',
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w500),
+          ),
+          TextSpan(
+            text: value,
+            style: const TextStyle(color: AppColors.textPrimary, fontSize: 11.5, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  Widget _metaBlock(String label, String value, {bool isCrimson = false, bool isBold = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 9.5,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textMuted,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: isBold || isCrimson ? FontWeight.bold : FontWeight.w600,
+            color: isCrimson ? AppColors.primaryCrimson : AppColors.textPrimary,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+
+  Widget _statusPill(String header, String label, Color color, {bool isSolid = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          header.toUpperCase(),
+          style: const TextStyle(fontSize: 8.5, color: AppColors.textMuted, fontWeight: FontWeight.w600, letterSpacing: 0.5),
+        ),
+        const SizedBox(height: 4),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: isSolid ? color : color.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.bold,
+              color: isSolid ? Colors.white : color,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // ==========================================
-// PAYMENT HISTORY SCREEN
+// PAYMENT HISTORY SCREEN (Luxury Dark)
 // ==========================================
 class PaymentHistoryScreen extends ConsumerWidget {
   const PaymentHistoryScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     final user = ref.watch(authControllerProvider).user;
 
     if (user == null) {
       return const Scaffold(
-        body: Center(child: Text('Please log in to view history.')),
+        backgroundColor: AppColors.bgDark,
+        body: Center(child: Text('Please log in to view history.', style: TextStyle(color: AppColors.textSecondary))),
       );
     }
 
     return Scaffold(
+      backgroundColor: AppColors.bgDark,
       appBar: AppBar(
-        title: const Text('Payment History'),
+        title: const Text('Payment History', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: AppColors.textPrimary)),
+        backgroundColor: AppColors.bgDark,
+        elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary),
           onPressed: () => context.go(AppRoutes.studentDashboard),
+        ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(color: AppColors.borderSubtle, height: 1),
         ),
       ),
       body: SafeArea(
@@ -1079,30 +2027,29 @@ class PaymentHistoryScreen extends ConsumerWidget {
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return const Center(child: CircularProgressIndicator(color: AppColors.primaryCrimson));
             }
             if (snapshot.hasError) {
-              return Center(child: Text('Error loading history: ${snapshot.error}'));
+              return Center(child: Text('Error loading history: ${snapshot.error}', style: const TextStyle(color: AppColors.error)));
             }
             
             final docs = snapshot.data?.docs ?? [];
             if (docs.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.receipt_long_rounded, size: 72, color: AppColors.textLight),
-                    const SizedBox(height: 16),
-                    Text('No transaction receipts found.', style: theme.textTheme.titleMedium),
-                    const SizedBox(height: 8),
-                    const Text('Receipts will appear here after a successful pass payment.', style: TextStyle(fontSize: 12, color: AppColors.textLight)),
-                  ],
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32.0),
+                  child: EmptyState(
+                    icon: Icons.receipt_long_rounded,
+                    title: 'No Transaction Receipts',
+                    description: 'Receipts will appear here after a successful pass payment.',
+                  ),
                 ),
               );
             }
 
             return ListView.separated(
-              padding: const EdgeInsets.all(24.0),
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.all(20.0),
               itemCount: docs.length,
               separatorBuilder: (context, index) => const SizedBox(height: 14),
               itemBuilder: (context, index) {
@@ -1131,54 +2078,64 @@ class PaymentHistoryScreen extends ConsumerWidget {
                   leadingIcon = Icons.hourglass_empty_rounded;
                 }
 
-                return Card(
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 18.0, vertical: 8.0),
-                    leading: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.1),
-                        shape: BoxShape.circle,
+                return PremiumCard(
+                  borderRadius: 20,
+                  padding: const EdgeInsets.all(16),
+                  onTap: () => _showReceiptDetailsDialog(context, data, dateString),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(leadingIcon, color: statusColor, size: 20),
                       ),
-                      child: Icon(leadingIcon, color: statusColor, size: 20),
-                    ),
-                    title: Text(
-                      route,
-                      style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 4),
-                        Text('Receipt: $receiptId', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-                        Text('Date: $dateString', style: const TextStyle(color: AppColors.textLight, fontSize: 11)),
-                      ],
-                    ),
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          '₹${amount.toStringAsFixed(2)}',
-                          style: TextStyle(fontWeight: FontWeight.bold, color: status == 'Failed' ? AppColors.error : AppColors.primaryCrimson, fontSize: 15),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              route,
+                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.textPrimary),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text('Receipt: $receiptId', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                            Text('Date: $dateString', style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                          ],
                         ),
-                        const SizedBox(height: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: statusColor.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(4),
+                      ),
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '₹${amount.toStringAsFixed(0)}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: status == 'Failed' ? AppColors.error : AppColors.primaryCrimson,
+                              fontSize: 16,
+                            ),
                           ),
-                          child: Text(
-                            status,
-                            style: TextStyle(color: statusColor, fontSize: 9, fontWeight: FontWeight.bold),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: statusColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              status,
+                              style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    onTap: () => _showReceiptDetailsDialog(context, data, dateString),
+                        ],
+                      ),
+                    ],
                   ),
                 );
               },
@@ -1190,7 +2147,6 @@ class PaymentHistoryScreen extends ConsumerWidget {
   }
 
   void _showReceiptDetailsDialog(BuildContext context, Map<String, dynamic> data, String dateString) {
-    final theme = Theme.of(context);
     final String receiptId = data['receiptId'] ?? 'RCPT-N/A';
     final String transactionId = data['transactionId'] ?? 'TXN-N/A';
     final String paymentMethod = data['paymentMethod'] ?? 'Online Payment';
@@ -1203,12 +2159,13 @@ class PaymentHistoryScreen extends ConsumerWidget {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
+          backgroundColor: AppColors.cardSurface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+          title: const Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('E-Receipt Details', style: TextStyle(fontWeight: FontWeight.bold)),
-              const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 28),
+              Text('E-Receipt Details', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: AppColors.textPrimary)),
+              Icon(Icons.check_circle_rounded, color: AppColors.success, size: 24),
             ],
           ),
           content: SingleChildScrollView(
@@ -1219,34 +2176,34 @@ class PaymentHistoryScreen extends ConsumerWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withOpacity(0.06),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: theme.colorScheme.primary.withOpacity(0.1)),
+                    color: AppColors.surfaceElevated,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.borderSubtle),
                   ),
                   child: Column(
                     children: [
-                      const Text('TOTAL PAID AMOUNT', style: TextStyle(fontSize: 10, color: AppColors.textSecondary, letterSpacing: 0.5)),
+                      const Text('TOTAL PAID AMOUNT', style: TextStyle(fontSize: 10, color: AppColors.textMuted, letterSpacing: 0.5, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 4),
                       Text(
                         '₹${amount.toStringAsFixed(2)}',
-                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
+                        style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: AppColors.primaryCrimson),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
                 _receiptDetailRow('Receipt ID', receiptId),
-                const Divider(height: 16),
+                const Divider(height: 16, color: AppColors.borderSubtle),
                 _receiptDetailRow('Transaction ID', transactionId),
-                const Divider(height: 16),
+                const Divider(height: 16, color: AppColors.borderSubtle),
                 _receiptDetailRow('Route Name', route),
-                const Divider(height: 16),
+                const Divider(height: 16, color: AppColors.borderSubtle),
                 _receiptDetailRow('Boarding Stop', boarding),
-                const Divider(height: 16),
+                const Divider(height: 16, color: AppColors.borderSubtle),
                 _receiptDetailRow('Destination Stop', destination),
-                const Divider(height: 16),
+                const Divider(height: 16, color: AppColors.borderSubtle),
                 _receiptDetailRow('Payment Date', dateString),
-                const Divider(height: 16),
+                const Divider(height: 16, color: AppColors.borderSubtle),
                 _receiptDetailRow('Payment Method', paymentMethod),
               ],
             ),
@@ -1254,14 +2211,14 @@ class PaymentHistoryScreen extends ConsumerWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Close'),
+              child: const Text('Close', style: TextStyle(color: AppColors.textSecondary)),
             ),
             ElevatedButton.icon(
-              icon: const Icon(Icons.download_rounded, size: 16),
-              label: const Text('Download TXT'),
+              icon: const Icon(Icons.download_rounded, size: 16, color: Colors.white),
+              label: const Text('Download TXT', style: TextStyle(color: Colors.white)),
               style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colorScheme.primary,
-                foregroundColor: Colors.white,
+                backgroundColor: AppColors.primaryCrimson,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: () async {
                 Navigator.pop(ctx);
@@ -1317,12 +2274,12 @@ Thank you for your payment!
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+        Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
         Flexible(
           child: Text(
             val,
             textAlign: TextAlign.end,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
           ),
         ),
       ],
@@ -1330,783 +2287,4 @@ Thank you for your payment!
   }
 }
 
-// ==========================================
-// NEW: SIMULATED PAYMENT SCREEN
-// ==========================================
-class StudentPaymentScreen extends ConsumerStatefulWidget {
-  const StudentPaymentScreen({super.key});
 
-  @override
-  ConsumerState<StudentPaymentScreen> createState() => _StudentPaymentScreenState();
-}
-
-class _StudentPaymentScreenState extends ConsumerState<StudentPaymentScreen> {
-  int _selectedPaymentMethod = 0; // 0: UPI ID, 1: QR Code, 2: Razorpay, 3: Cash (Admin), 4: Manual Transfer
-  final _formKey = GlobalKey<FormState>();
-
-  // Input Controllers
-  final _cardNumberController = TextEditingController();
-  final _cardHolderController = TextEditingController();
-  final _expiryController = TextEditingController();
-  final _cvvController = TextEditingController();
-  final _upiIdController = TextEditingController();
-  final _qrUtrController = TextEditingController();
-  final _manualUtrController = TextEditingController();
-
-  bool _simulateFailure = false;
-  bool _isProcessing = false;
-  String _processingStep = '';
-
-  @override
-  void dispose() {
-    _cardNumberController.dispose();
-    _cardHolderController.dispose();
-    _expiryController.dispose();
-    _cvvController.dispose();
-    _upiIdController.dispose();
-    _qrUtrController.dispose();
-    _manualUtrController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _startPaymentSequence(
-    Map<String, dynamic> passData,
-    String passDocId,
-    double totalAmount,
-  ) async {
-    setState(() {
-      _isProcessing = true;
-      _processingStep = 'Contacting Payment Gateway...';
-    });
-
-    await Future.delayed(const Duration(seconds: 1));
-    if (!mounted) return;
-    setState(() => _processingStep = 'Connecting to Secure Banking Server...');
-
-    await Future.delayed(const Duration(seconds: 1));
-    if (!mounted) return;
-    setState(() => _processingStep = 'Verifying Transaction Credentials...');
-
-    await Future.delayed(const Duration(seconds: 1));
-    if (!mounted) return;
-    setState(() => _processingStep = 'Authorizing Transaction...');
-
-    await Future.delayed(const Duration(seconds: 1));
-    if (!mounted) return;
-
-    final user = ref.read(authControllerProvider).user;
-    if (user == null) return;
-
-    final double fare = (passData['fare'] as num?)?.toDouble() ?? 0.0;
-    final String routeName = passData['route'] ?? passData['routeName'] ?? 'Unknown Route';
-    final String routeId = passData['routeId'] ?? '';
-    final String boardingStop = passData['boardingStop'] ?? 'N/A';
-    final String destinationStop = passData['destinationStop'] ?? 'N/A';
-    final String dept = passData['department'] ?? 'N/A';
-    final String? dist = passData['distance'];
-
-    final transactionId = 'TXN-${DateTime.now().millisecondsSinceEpoch}';
-
-    String paymentMethodStr = '';
-    String finalStatus = '';
-    String finalPassStatus = '';
-
-    if (_selectedPaymentMethod == 0) {
-      paymentMethodStr = 'UPI ID (${_upiIdController.text.trim()})';
-      finalStatus = _simulateFailure ? 'Failed' : 'Paid';
-      finalPassStatus = _simulateFailure ? 'Pending Payment' : 'Active';
-    } else if (_selectedPaymentMethod == 1) {
-      paymentMethodStr = 'QR Code Scan (UTR: ${_qrUtrController.text.trim()})';
-      finalStatus = _simulateFailure ? 'Failed' : 'Paid';
-      finalPassStatus = _simulateFailure ? 'Pending Payment' : 'Active';
-    } else if (_selectedPaymentMethod == 2) {
-      paymentMethodStr = 'Razorpay Card (${_cardNumberController.text.substring(0, 4)}...)';
-      finalStatus = _simulateFailure ? 'Failed' : 'Paid';
-      finalPassStatus = _simulateFailure ? 'Pending Payment' : 'Active';
-    } else if (_selectedPaymentMethod == 3) {
-      paymentMethodStr = 'Cash Payment (Admin Verification)';
-      finalStatus = 'Pending Verification';
-      finalPassStatus = 'Pending Payment';
-    } else if (_selectedPaymentMethod == 4) {
-      paymentMethodStr = 'Manual Verification (UTR: ${_manualUtrController.text.trim()})';
-      finalStatus = 'Pending Verification';
-      finalPassStatus = 'Pending Payment';
-    }
-
-    if (finalStatus == 'Failed') {
-      try {
-        await ref.read(busPassRepositoryProvider).updatePassPayment(uid: user.uid, isSuccess: false);
-        await ref.read(paymentRepositoryProvider).submitPayment(
-          uid: user.uid,
-          passId: 'N/A',
-          studentName: user.fullName ?? 'N/A',
-          amount: totalAmount,
-          transactionId: transactionId,
-          paymentDate: DateTime.now(),
-          paymentStatus: 'Failed',
-          paymentMethod: paymentMethodStr,
-          route: routeName,
-          routeId: routeId,
-          boarding: boardingStop,
-          destination: destinationStop,
-          distance: dist ?? 'N/A',
-          fare: fare,
-        );
-
-        await ref.read(busPassControllerProvider.notifier).loadBusPass(user.uid);
-      } catch (_) {}
-
-      if (mounted) {
-        setState(() => _isProcessing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Payment Transaction Declined by Issuing Bank.'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    } else {
-      try {
-        await ref.read(paymentRepositoryProvider).submitPayment(
-          uid: user.uid,
-          passId: 'N/A',
-          studentName: user.fullName ?? 'N/A',
-          amount: totalAmount,
-          transactionId: transactionId,
-          paymentDate: DateTime.now(),
-          paymentStatus: finalStatus,
-          paymentMethod: paymentMethodStr,
-          route: routeName,
-          routeId: routeId,
-          boarding: boardingStop,
-          destination: destinationStop,
-          distance: dist ?? 'N/A',
-          fare: fare,
-        );
-
-        // Update application
-        final appQuery = await FirebaseFirestore.instance
-            .collection('bus_pass_applications')
-            .where('uid', isEqualTo: user.uid)
-            .where('passStatus', isEqualTo: 'Pending Payment')
-            .limit(1)
-            .get();
-
-        if (appQuery.docs.isNotEmpty) {
-          await appQuery.docs.first.reference.update({
-            'paymentStatus': finalStatus,
-            'passStatus': finalPassStatus,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-        }
-
-        // Update/create digital bus pass in bus_passes
-        await FirebaseFirestore.instance
-            .collection('bus_passes')
-            .doc(user.uid)
-            .set({
-          'uid': user.uid,
-          'passId': 'PASS-${passDocId.length > 5 ? passDocId.substring(4) : passDocId}',
-          'route': routeName,
-          'routeId': routeId,
-          'boardingStop': boardingStop,
-          'destinationStop': destinationStop,
-          'fare': fare,
-          'department': dept,
-          'distance': dist,
-          'paymentStatus': finalStatus,
-          'passStatus': finalPassStatus,
-          'expiryDate': Timestamp.fromDate(DateTime.now().add(const Duration(days: 180))),
-          'busNumber': 'Not Assigned',
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-
-        await ref.read(busPassRepositoryProvider).updatePassPayment(uid: user.uid, isSuccess: true);
-        await ref.read(busPassControllerProvider.notifier).loadBusPass(user.uid);
-
-        if (mounted) {
-          setState(() => _isProcessing = false);
-          String snackMsg = finalStatus == 'Paid'
-              ? 'Payment Successful! Digital Pass generated and receipt saved.'
-              : 'Manual Payment Request Submitted. Awaiting administrative approval.';
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(snackMsg),
-              backgroundColor: AppColors.success,
-            ),
-          );
-          context.go(AppRoutes.studentDashboard);
-        }
-      } catch (e) {
-        if (mounted) {
-          setState(() => _isProcessing = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Transaction Failed: ${e.toString()}'),
-              backgroundColor: AppColors.error,
-            ),
-          );
-        }
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final user = ref.watch(authControllerProvider).user;
-    final pendingPassAsync = ref.watch(pendingPassStreamProvider);
-
-    if (_isProcessing) {
-      return Scaffold(
-        body: Container(
-          width: double.infinity,
-          height: double.infinity,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [AppColors.secondaryDark, Colors.black],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-          ),
-          child: SafeArea(
-            child: Center(
-              child: GlassCard(
-                blur: 16,
-                borderColor: AppColors.accentGold,
-                opacity: 0.1,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.lock_rounded,
-                      color: AppColors.accentGold,
-                      size: 64,
-                    ),
-                    const SizedBox(height: 32),
-                    const CircularProgressIndicator(
-                      color: AppColors.primaryCrimson,
-                      strokeWidth: 4,
-                    ),
-                    const SizedBox(height: 32),
-                    Text(
-                      'Securing Transaction...',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _processingStep,
-                      style: const TextStyle(color: Colors.white70, fontSize: 13),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      'Please do not close the app or tap back.',
-                      style: TextStyle(color: Colors.grey, fontSize: 11, fontStyle: FontStyle.italic),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Secure Pass Payment'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          onPressed: () => context.go(AppRoutes.studentDashboard),
-        ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.all(24.0),
-          child: pendingPassAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, stack) => Center(child: Text('Error: $err')),
-            data: (snapshot) {
-              if (snapshot.docs.isEmpty) {
-                return Center(
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 60),
-                      const Icon(Icons.check_circle_outline_rounded, size: 72, color: AppColors.success),
-                      const SizedBox(height: 16),
-                      Text('No pending pass applications found.', style: theme.textTheme.titleMedium),
-                      const SizedBox(height: 24),
-                      PrimaryButton(
-                        text: 'Go to Dashboard',
-                        onPressed: () => context.go(AppRoutes.studentDashboard),
-                      ),
-                    ],
-                  ),
-                );
-              }
-
-              final passDoc = snapshot.docs.first;
-              final passData = passDoc.data();
-              final String routeName = passData['route'] as String? ?? 'No Route Selected';
-              final double fare = (passData['fare'] as num?)?.toDouble() ?? 0.0;
-              final String boarding = passData['boardingStop'] as String? ?? 'N/A';
-              final String destination = passData['destinationStop'] as String? ?? 'N/A';
-              final String dept = passData['department'] as String? ?? user?.department ?? 'N/A';
-              final String courseStr = user?.course ?? user?.department ?? 'N/A';
-              final String? dist = passData['distance'] as String?;
-
-              // Calculations: GST (18%) and Convenience fee (50 for online, 0 for cash/manual)
-              final double gst = fare * 0.18;
-              final double convenienceFee = (_selectedPaymentMethod == 3 || _selectedPaymentMethod == 4) ? 0.0 : 50.0;
-              final double totalAmount = fare + gst + convenienceFee;
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 1. Review Student & Route Details
-                  Text(
-                    'Verification Summary',
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: AppColors.primaryCrimson),
-                  ),
-                  const SizedBox(height: 12),
-                  GlassCard(
-                    blur: 10,
-                    borderColor: AppColors.primaryCrimson.withOpacity(0.3),
-                    opacity: 0.04,
-                    padding: const EdgeInsets.all(18),
-                    child: Column(
-                      children: [
-                        _infoRow('Student Name', user?.fullName ?? 'N/A', theme),
-                        const Divider(height: 20),
-                        _infoRow('PRN Number', user?.prn ?? 'N/A', theme),
-                        const Divider(height: 20),
-                        _infoRow('Course', courseStr, theme),
-                        const Divider(height: 20),
-                        _infoRow('Department', dept, theme),
-                        const Divider(height: 20),
-                        _infoRow('Selected Route', routeName, theme),
-                        const Divider(height: 20),
-                        _infoRow('Boarding Stop', boarding, theme),
-                        const Divider(height: 20),
-                        _infoRow('Destination Stop', destination, theme),
-                        if (dist != null) ...[
-                          const Divider(height: 20),
-                          _infoRow('Distance', dist, theme),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-
-                  // 2. Fare Breakdown
-                  Text(
-                    'Fee Summary',
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: AppColors.primaryCrimson),
-                  ),
-                  const SizedBox(height: 12),
-                  GlassCard(
-                    blur: 10,
-                    borderColor: AppColors.primaryCrimson.withOpacity(0.3),
-                    opacity: 0.04,
-                    padding: const EdgeInsets.all(18),
-                    child: Column(
-                      children: [
-                        _infoRow('Pass Base Fee', '₹${fare.toStringAsFixed(2)}', theme),
-                        const Divider(height: 20),
-                        _infoRow('GST (18%)', '₹${gst.toStringAsFixed(2)}', theme),
-                        const Divider(height: 20),
-                        _infoRow('Convenience Charge', convenienceFee > 0 ? '₹${convenienceFee.toStringAsFixed(2)}' : 'Not Applicable', theme),
-                        const Divider(height: 20),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Total Amount Payable', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                            Text(
-                              '₹${totalAmount.toStringAsFixed(2)}',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.primaryCrimson),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-
-                  // 3. Payment Methods
-                  Text(
-                    'Select Payment Mode',
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: AppColors.primaryCrimson),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 84,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
-                      children: [
-                        _paymentTabButton(0, Icons.mobile_friendly_rounded, 'UPI ID'),
-                        const SizedBox(width: 8),
-                        _paymentTabButton(1, Icons.qr_code_2_rounded, 'QR Code'),
-                        const SizedBox(width: 8),
-                        _paymentTabButton(2, Icons.payment_rounded, 'Razorpay'),
-                        const SizedBox(width: 8),
-                        _paymentTabButton(3, Icons.payments_rounded, 'Cash (Admin)'),
-                        const SizedBox(width: 8),
-                        _paymentTabButton(4, Icons.account_balance_rounded, 'Bank Manual'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Form Inputs
-                  Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (_selectedPaymentMethod == 0) ...[
-                          // UPI Form
-                          TextFormField(
-                            controller: _upiIdController,
-                            decoration: const InputDecoration(
-                              labelText: 'UPI Virtual Payment Address (VPA) *',
-                              hintText: 'student@okaxis',
-                              prefixIcon: Icon(Icons.alternate_email_rounded),
-                            ),
-                            validator: (val) {
-                              if (val == null || val.trim().isEmpty) return 'UPI ID is required.';
-                              if (!val.contains('@')) return 'Enter a valid UPI ID (e.g. student@ybl).';
-                              return null;
-                            },
-                          ),
-                        ] else if (_selectedPaymentMethod == 1) ...[
-                          // QR Code Form
-                          Center(
-                            child: GlassCard(
-                              blur: 5,
-                              borderColor: AppColors.primaryCrimson.withOpacity(0.2),
-                              opacity: 0.02,
-                              padding: const EdgeInsets.all(20),
-                              child: Column(
-                                children: [
-                                  QrImageView(
-                                    data: 'upi://pay?pa=icem@upi&pn=ICEM%20Bus%20Fund&am=${totalAmount.toStringAsFixed(2)}&cu=INR',
-                                    version: QrVersions.auto,
-                                    size: 150.0,
-                                    eyeStyle: const QrEyeStyle(
-                                      eyeShape: QrEyeShape.square,
-                                      color: AppColors.primaryCrimson,
-                                    ),
-                                    dataModuleStyle: const QrDataModuleStyle(
-                                      dataModuleShape: QrDataModuleShape.square,
-                                      color: AppColors.secondaryDark,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    'Scan QR via GPay, PhonePe, or Paytm\nPayable: ₹${totalAmount.toStringAsFixed(2)}',
-                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.secondaryDark),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          TextFormField(
-                            controller: _qrUtrController,
-                            keyboardType: TextInputType.number,
-                            maxLength: 12,
-                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                            decoration: const InputDecoration(
-                              labelText: 'Transaction Reference / UTR Number * (12 digits)',
-                              hintText: 'e.g. 301234567890',
-                              prefixIcon: Icon(Icons.numbers_rounded),
-                            ),
-                            validator: (val) {
-                              if (val == null || val.trim().isEmpty) return 'Reference / UTR number is required.';
-                              if (val.trim().length != 12) return 'UTR must be exactly 12 digits.';
-                              return null;
-                            },
-                          ),
-                        ] else if (_selectedPaymentMethod == 2) ...[
-                          // Razorpay Card Form
-                          TextFormField(
-                            controller: _cardNumberController,
-                            keyboardType: TextInputType.number,
-                            maxLength: 16,
-                            decoration: const InputDecoration(
-                              labelText: 'Card Number *',
-                              hintText: '1234 5678 1234 5678',
-                              prefixIcon: Icon(Icons.credit_card_outlined),
-                            ),
-                            validator: (val) {
-                              if (val == null || val.trim().isEmpty) return 'Card number is required.';
-                              if (val.trim().length < 16) return 'Enter a valid 16-digit card number.';
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          TextFormField(
-                            controller: _cardHolderController,
-                            decoration: const InputDecoration(
-                              labelText: 'Cardholder Name *',
-                              hintText: 'Enter name printed on card',
-                              prefixIcon: Icon(Icons.person_outline_rounded),
-                            ),
-                            validator: (val) => val == null || val.trim().isEmpty ? 'Cardholder name is required.' : null,
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextFormField(
-                                  controller: _expiryController,
-                                  keyboardType: TextInputType.datetime,
-                                  maxLength: 5,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Expiry Date (MM/YY) *',
-                                    hintText: '12/29',
-                                    prefixIcon: Icon(Icons.calendar_today_outlined),
-                                  ),
-                                  validator: (val) {
-                                    if (val == null || val.trim().isEmpty) return 'Required';
-                                    if (!val.contains('/')) return 'Format MM/YY';
-                                    return null;
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: TextFormField(
-                                  controller: _cvvController,
-                                  keyboardType: TextInputType.number,
-                                  maxLength: 3,
-                                  obscureText: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'CVV *',
-                                    hintText: '***',
-                                    prefixIcon: Icon(Icons.lock_outline_rounded),
-                                  ),
-                                  validator: (val) {
-                                    if (val == null || val.trim().isEmpty) return 'Required';
-                                    if (val.trim().length < 3) return '3 digits';
-                                    return null;
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                        ] else if (_selectedPaymentMethod == 3) ...[
-                          // Cash Form Instructions
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(18),
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryCrimson.withOpacity(0.04),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: AppColors.primaryCrimson.withOpacity(0.15)),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    const Icon(Icons.info_outline_rounded, color: AppColors.primaryCrimson, size: 20),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'Cash Payment Instructions',
-                                      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold, color: AppColors.primaryCrimson),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  '1. Please submit cash of ₹${totalAmount.toStringAsFixed(2)} at the College Admin desk.\n'
-                                  '2. Share your PRN (${user?.prn ?? "N/A"}) or Pass Application ID.\n'
-                                  '3. Tap the request button below to notify the administrator.',
-                                  style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary, height: 1.5),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ] else ...[
-                          // Manual Verification Transfer details
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(16),
-                            margin: const EdgeInsets.only(bottom: 16),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: const Color(0xFFE2E8F0)),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('COLLEGE BANK ACCOUNT DETAILS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textLight, letterSpacing: 0.5)),
-                                const SizedBox(height: 8),
-                                _infoRow('Account Name', 'ICEM Student Welfare & Bus Fund', theme),
-                                const Divider(height: 12),
-                                _infoRow('Bank Name', 'State Bank of India', theme),
-                                const Divider(height: 12),
-                                _infoRow('Account Number', '98765432101', theme),
-                                const Divider(height: 12),
-                                _infoRow('IFSC Code', 'SBIN0004567', theme),
-                              ],
-                            ),
-                          ),
-                          TextFormField(
-                            controller: _manualUtrController,
-                            keyboardType: TextInputType.number,
-                            maxLength: 12,
-                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                            decoration: const InputDecoration(
-                              labelText: 'Bank Transfer Reference / UTR Number * (12 digits)',
-                              hintText: 'e.g. 301234567890',
-                              prefixIcon: Icon(Icons.numbers_rounded),
-                            ),
-                            validator: (val) {
-                              if (val == null || val.trim().isEmpty) return 'Reference / UTR number is required.';
-                              if (val.trim().length != 12) return 'UTR must be exactly 12 digits.';
-                              return null;
-                            },
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Simulation Switch for Online Modes
-                  if (_selectedPaymentMethod <= 2) ...[
-                    SwitchListTile(
-                      title: const Text('Simulate Bank Network Failure', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                      subtitle: const Text('Toggle to simulate transaction decline/timeout', style: TextStyle(fontSize: 11)),
-                      activeColor: AppColors.primaryCrimson,
-                      value: _simulateFailure,
-                      onChanged: (val) => setState(() => _simulateFailure = val),
-                    ),
-                    const SizedBox(height: 20),
-                  ],
-
-                  PrimaryButton(
-                    text: _selectedPaymentMethod >= 3 
-                        ? 'Request Manual Verification' 
-                        : 'Pay Securely ₹${totalAmount.toStringAsFixed(2)}',
-                    icon: Icons.security_rounded,
-                    onPressed: () {
-                      if (_formKey.currentState!.validate()) {
-                        _startPaymentSequence(passData, passDoc.id, totalAmount);
-                      }
-                    },
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _paymentTabButton(int index, IconData icon, String label) {
-    final active = _selectedPaymentMethod == index;
-    return InkWell(
-      onTap: () => setState(() => _selectedPaymentMethod = index),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: 90,
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: active ? AppColors.primaryCrimson : Colors.grey.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: active ? AppColors.primaryCrimson : Colors.grey.withOpacity(0.15)),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: active ? Colors.white : AppColors.textSecondary, size: 22),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                color: active ? Colors.white : AppColors.textSecondary,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _infoRow(String label, String val, ThemeData theme, {Color? color}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w500, color: AppColors.textSecondary)),
-        Flexible(
-          child: Text(
-            val,
-            textAlign: TextAlign.end,
-            style: TextStyle(fontWeight: FontWeight.bold, color: color ?? AppColors.textPrimary),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ── Route Info Stat widget for Apply screen ──
-class _RouteInfoStat extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color? valueColor;
-
-  const _RouteInfoStat({
-    required this.icon,
-    required this.label,
-    required this.value,
-    this.valueColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: valueColor ?? const Color(0xFF64748B)),
-        const SizedBox(height: 3),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 10,
-            color: Color(0xFF94A3B8),
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: valueColor ?? const Color(0xFF0F172A),
-          ),
-        ),
-      ],
-    );
-  }
-}

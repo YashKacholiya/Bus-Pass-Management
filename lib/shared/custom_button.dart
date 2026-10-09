@@ -32,7 +32,7 @@ class _PrimaryButtonState extends State<PrimaryButton> with SingleTickerProvider
       vsync: this,
       duration: const Duration(milliseconds: 100),
       lowerBound: 0.0,
-      upperBound: 0.05,
+      upperBound: 0.03,
     )..addListener(() {
         setState(() {});
       });
@@ -58,32 +58,25 @@ class _PrimaryButtonState extends State<PrimaryButton> with SingleTickerProvider
       child: Transform.scale(
         scale: _scale,
         child: Container(
-          height: 56,
+          height: 54,
           width: double.infinity,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
             gradient: isEnabled
                 ? const LinearGradient(
-                    colors: [AppColors.primaryCrimson, AppColors.darkCrimson],
+                    colors: [AppColors.crimsonRed, AppColors.primaryCrimson],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
                   )
                 : null,
-            color: isEnabled ? null : AppColors.textLight.withOpacity(0.24),
-            boxShadow: isEnabled
-                ? [
-                    BoxShadow(
-                      color: AppColors.primaryCrimson.withOpacity(0.25),
-                      blurRadius: 16,
-                      spreadRadius: -2,
-                      offset: const Offset(0, 8),
-                    ),
-                  ]
-                : null,
+            color: isEnabled ? null : AppColors.surfaceElevated,
+            boxShadow: isEnabled ? AppColors.crimsonGlow : null,
           ),
           child: Center(
             child: widget.isLoading
                 ? const SizedBox(
-                    width: 24,
-                    height: 24,
+                    width: 22,
+                    height: 22,
                     child: CircularProgressIndicator(
                       color: Colors.white,
                       strokeWidth: 2.5,
@@ -94,14 +87,15 @@ class _PrimaryButtonState extends State<PrimaryButton> with SingleTickerProvider
                     children: [
                       if (widget.icon != null) ...[
                         Icon(widget.icon, color: Colors.white, size: 20),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
                       ],
                       Text(
                         widget.text,
                         style: theme.textTheme.titleMedium?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
+                          color: isEnabled ? Colors.white : AppColors.textLight,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                          letterSpacing: 0.4,
                         ),
                       ),
                     ],
@@ -142,7 +136,7 @@ class _SecondaryButtonState extends State<SecondaryButton> with SingleTickerProv
       vsync: this,
       duration: const Duration(milliseconds: 100),
       lowerBound: 0.0,
-      upperBound: 0.04,
+      upperBound: 0.03,
     )..addListener(() {
         setState(() {});
       });
@@ -168,21 +162,22 @@ class _SecondaryButtonState extends State<SecondaryButton> with SingleTickerProv
       child: Transform.scale(
         scale: _scale,
         child: Container(
-          height: 56,
+          height: 54,
           width: double.infinity,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+            color: isEnabled ? AppColors.surfaceElevated : AppColors.surface,
             border: Border.all(
-              color: isEnabled ? AppColors.primaryCrimson : AppColors.textLight.withOpacity(0.3),
-              width: 2.0,
+              color: isEnabled ? AppColors.cardBorder : AppColors.cardBorderSubtle,
+              width: 1.2,
             ),
+            boxShadow: isEnabled ? AppColors.softShadow : null,
           ),
           child: Center(
             child: widget.isLoading
                 ? const SizedBox(
-                    width: 24,
-                    height: 24,
+                    width: 22,
+                    height: 22,
                     child: CircularProgressIndicator(
                       color: AppColors.primaryCrimson,
                       strokeWidth: 2.5,
@@ -192,15 +187,20 @@ class _SecondaryButtonState extends State<SecondaryButton> with SingleTickerProv
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       if (widget.icon != null) ...[
-                        Icon(widget.icon, color: AppColors.primaryCrimson, size: 20),
-                        const SizedBox(width: 10),
+                        Icon(
+                          widget.icon,
+                          color: isEnabled ? AppColors.textPrimary : AppColors.textLight,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
                       ],
                       Text(
                         widget.text,
                         style: theme.textTheme.titleMedium?.copyWith(
-                          color: isEnabled ? AppColors.primaryCrimson : AppColors.textLight,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
+                          color: isEnabled ? AppColors.textPrimary : AppColors.textLight,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                          letterSpacing: 0.2,
                         ),
                       ),
                     ],
@@ -211,3 +211,4 @@ class _SecondaryButtonState extends State<SecondaryButton> with SingleTickerProv
     );
   }
 }
+

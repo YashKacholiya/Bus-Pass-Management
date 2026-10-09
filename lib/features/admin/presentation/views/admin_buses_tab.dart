@@ -42,27 +42,9 @@ class _AdminBusesTabState extends ConsumerState<AdminBusesTab>
     final searchQuery = ref.watch(busSearchQueryProvider);
     final statusFilter = ref.watch(busStatusFilterProvider);
 
-    final isMobile = MediaQuery.of(context).size.width < 900;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: isMobile
-          ? AppBar(
-              backgroundColor: Colors.white,
-              surfaceTintColor: Colors.white,
-              title: const Text(
-                'Bus Management',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF0F172A)),
-              ),
-              leading: IconButton(
-                icon: const Icon(Icons.menu_rounded, color: Color(0xFF0F172A)),
-                onPressed: () {
-                  Scaffold.of(context).openDrawer();
-                },
-              ),
-              elevation: 0,
-            )
-          : null,
       floatingActionButton: FloatingActionButton.extended(
         key: const ValueKey('add_bus_fab'),
         onPressed: () => _showBusFormSheet(context, bus: null),
@@ -1050,30 +1032,6 @@ class _FormField extends StatelessWidget {
   }
 }
 
-// ============================================================
-// ADD BUS BUTTON
-// ============================================================
-
-class _AddBusButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _AddBusButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return ElevatedButton.icon(
-      onPressed: onTap,
-      icon: const Icon(Icons.add_rounded, size: 18),
-      label: const Text('Add Bus'),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: AppColors.primaryCrimson,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      ),
-    );
-  }
-}
 
 // ============================================================
 // BUS CARD WIDGET
@@ -1094,6 +1052,7 @@ class _BusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final name = bus['busName'] ?? 'Unnamed Bus';
     final number = bus['busNumber'] ?? 'N/A';
     final regNo = bus['registrationNumber'] ?? 'N/A';
@@ -1110,9 +1069,9 @@ class _BusCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFF1F5F9)),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.02),
@@ -1147,10 +1106,10 @@ class _BusCard extends StatelessWidget {
                   children: [
                     Text(
                       name.toString(),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 15,
-                        color: Color(0xFF0F172A),
+                        color: theme.colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -1158,10 +1117,10 @@ class _BusCard extends StatelessWidget {
                       children: [
                         Text(
                           'No: $number',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF475569),
+                            color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -1236,10 +1195,10 @@ class _BusCard extends StatelessWidget {
                         Expanded(
                           child: Text(
                             driverName.toString(),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFF334155),
+                              color: theme.colorScheme.onSurface,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1251,13 +1210,13 @@ class _BusCard extends StatelessWidget {
                     Row(
                       children: [
                         const Icon(Icons.phone_android_rounded,
-                            size: 14, color: Color(0xFF94A3B8)),
+                            size: 14, color: Color(0xFF64748B)),
                         const SizedBox(width: 6),
                         Text(
                           driverPhone.toString(),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Color(0xFF64748B),
+                            color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ],

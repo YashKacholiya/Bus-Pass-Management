@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:icem_bus/features/auth/domain/entities/user_entity.dart';
 
 // ============================================================
 // TAB / SEARCH / FILTER STATE PROVIDERS
@@ -41,7 +43,7 @@ final totalStudentsStreamProvider = StreamProvider.autoDispose<int>((ref) {
   return FirebaseFirestore.instance
       .collection('users')
       .snapshots()
-      .map((s) => s.docs.length);
+      .map((s) => s.docs.where((d) => UserEntity.isStudentUser(d.data())).length);
 });
 
 final activePassesStreamProvider = StreamProvider.autoDispose<int>((ref) {
@@ -55,25 +57,31 @@ final activePassesStreamProvider = StreamProvider.autoDispose<int>((ref) {
 final pendingAppsStreamProvider = StreamProvider.autoDispose<int>((ref) {
   return FirebaseFirestore.instance
       .collection('bus_pass_applications')
-      .where('status', isEqualTo: 'Pending')
       .snapshots()
-      .map((s) => s.docs.length);
+      .map((s) => s.docs.where((d) {
+            final st = (d.data()['status'] ?? d.data()['passStatus'] ?? '').toString();
+            return st == 'Pending' || st == 'Payment Pending' || st == 'Pending Approval' || st == 'Pending Payment';
+          }).length);
 });
 
 final approvedPassesStreamProvider = StreamProvider.autoDispose<int>((ref) {
   return FirebaseFirestore.instance
       .collection('bus_pass_applications')
-      .where('status', isEqualTo: 'Approved')
       .snapshots()
-      .map((s) => s.docs.length);
+      .map((s) => s.docs.where((d) {
+            final st = (d.data()['status'] ?? d.data()['passStatus'] ?? '').toString();
+            return st == 'Approved' || st == 'Active';
+          }).length);
 });
 
 final rejectedPassesStreamProvider = StreamProvider.autoDispose<int>((ref) {
   return FirebaseFirestore.instance
       .collection('bus_pass_applications')
-      .where('status', isEqualTo: 'Rejected')
       .snapshots()
-      .map((s) => s.docs.length);
+      .map((s) => s.docs.where((d) {
+            final st = (d.data()['status'] ?? d.data()['passStatus'] ?? '').toString();
+            return st == 'Rejected';
+          }).length);
 });
 
 final expiredPassesStreamProvider = StreamProvider.autoDispose<int>((ref) {
@@ -131,19 +139,43 @@ final recentApplicationsStreamProvider =
 
 final filteredApplicationsStreamProvider = StreamProvider.autoDispose
     .family<List<Map<String, dynamic>>, String>((ref, statusFilter) {
-  Query<Map<String, dynamic>> query =
-      FirebaseFirestore.instance.collection('bus_pass_applications');
+  return FirebaseFirestore.instance
+      .collection('bus_pass_applications')
+      .orderBy('createdAt', descending: true)
+      .snapshots()
+      .map((snapshot) {
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final pStatus = (data['paymentStatus'] as String? ?? '').toLowerCase();
+      final aStatus = (data['status'] as String? ?? data['passStatus'] as String? ?? '').toLowerCase();
+      if ((aStatus == 'approved' || aStatus == 'active') && pStatus != 'paid' && pStatus != 'success') {
+        // Diagnostic warning for historical inconsistent records
+        debugPrint('🚨 [INCONSISTENT APPLICATION DETECTED]: ID: ${doc.id}, Application Status: ${data['status']}, Payment Status: ${data['paymentStatus']}, Student: ${data['fullName'] ?? data['studentName']}');
+      }
+    }
 
-  if (statusFilter != 'All') {
-    query = query.where('status', isEqualTo: statusFilter);
-  }
+    return snapshot.docs.map((doc) {
+      final data = doc.data();
+      data['id'] = doc.id;
+      return data;
+    }).where((app) {
+      if (statusFilter == 'All') return true;
+      final st = (app['status'] ?? app['passStatus'] ?? '').toString();
+      final pStatus = (app['paymentStatus'] ?? '').toString().toLowerCase();
+      final isPaid = pStatus == 'paid' || pStatus == 'success';
 
-  return query.orderBy('createdAt', descending: true).snapshots().map(
-      (snapshot) => snapshot.docs.map((doc) {
-            final data = doc.data();
-            data['id'] = doc.id;
-            return data;
-          }).toList());
+      if (statusFilter == 'Pending') {
+        return st == 'Pending' || st == 'Pending Approval' || st == 'Payment Pending' || st == 'Pending Payment';
+      } else if (statusFilter == 'Approved') {
+        return st == 'Approved' || st == 'Active';
+      } else if (statusFilter == 'Rejected') {
+        return st == 'Rejected';
+      } else if (statusFilter == 'Payment Pending') {
+        return !isPaid && (st == 'Payment Pending' || st == 'Pending Payment' || st == 'Pending');
+      }
+      return st == statusFilter;
+    }).toList();
+  });
 });
 
 // ============================================================
@@ -179,6 +211,20 @@ final studentsListStreamProvider =
   return FirebaseFirestore.instance
       .collection('users')
       .snapshots()
+      .map((s) => s.docs
+          .where((d) => UserEntity.isStudentUser(d.data()))
+          .map((d) {
+            final data = d.data();
+            data['id'] = d.id;
+            return data;
+          }).toList());
+});
+
+final allUsersListStreamProvider =
+    StreamProvider.autoDispose<List<Map<String, dynamic>>>((ref) {
+  return FirebaseFirestore.instance
+      .collection('users')
+      .snapshots()
       .map((s) => s.docs.map((d) {
             final data = d.data();
             data['id'] = d.id;
@@ -207,14 +253,42 @@ final singleApplicationStreamProvider = StreamProvider.autoDispose
 final paymentsListStreamProvider =
     StreamProvider.autoDispose<List<Map<String, dynamic>>>((ref) {
   return FirebaseFirestore.instance
-      .collection('receipts')
-      .orderBy('createdAt', descending: true)
+      .collection('payments')
       .snapshots()
-      .map((s) => s.docs.map((d) {
-            final data = d.data();
-            data['id'] = d.id;
-            return data;
-          }).toList());
+      .asyncMap((paymentsSnap) async {
+        final paymentsMap = <String, Map<String, dynamic>>{};
+        for (final doc in paymentsSnap.docs) {
+          final data = Map<String, dynamic>.from(doc.data());
+          data['id'] = doc.id;
+          paymentsMap[doc.id] = data;
+        }
+
+        try {
+          final receiptsSnap =
+              await FirebaseFirestore.instance.collection('receipts').get();
+          for (final doc in receiptsSnap.docs) {
+            if (!paymentsMap.containsKey(doc.id)) {
+              final data = Map<String, dynamic>.from(doc.data());
+              data['id'] = doc.id;
+              paymentsMap[doc.id] = data;
+            }
+          }
+        } catch (_) {}
+
+        final list = paymentsMap.values.toList();
+        list.sort((a, b) {
+          final aDate = a['createdAt'] ?? a['paymentDate'];
+          final bDate = b['createdAt'] ?? b['paymentDate'];
+          if (aDate == null && bDate == null) return 0;
+          if (aDate == null) return 1;
+          if (bDate == null) return -1;
+          if (aDate is Timestamp && bDate is Timestamp) {
+            return bDate.compareTo(aDate);
+          }
+          return 0;
+        });
+        return list;
+      });
 });
 
 final busPassesListStreamProvider =

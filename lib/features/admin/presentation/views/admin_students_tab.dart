@@ -129,6 +129,7 @@ class _StudentCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
     final name = student['fullName'] ?? 'Unknown';
     final email = student['email'] ?? 'N/A';
     final prn = student['prn'] ?? 'N/A';
@@ -142,9 +143,9 @@ class _StudentCard extends ConsumerWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFF1F5F9)),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.02),
@@ -207,10 +208,10 @@ class _StudentCard extends ConsumerWidget {
                           Expanded(
                             child: Text(
                               name.toString(),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w800,
                                 fontSize: 15,
-                                color: Color(0xFF0F172A),
+                                color: theme.colorScheme.onSurface,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -241,10 +242,10 @@ class _StudentCard extends ConsumerWidget {
                         children: [
                           Text(
                             course.toString(),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: Color(0xFF475569),
+                              color: theme.colorScheme.onSurfaceVariant,
                             ),
                           ),
                           const SizedBox(width: 6),
@@ -252,9 +253,9 @@ class _StudentCard extends ConsumerWidget {
                           const SizedBox(width: 6),
                           Text(
                             'PRN: $prn',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Color(0xFF64748B),
+                              color: theme.colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ],
@@ -269,7 +270,7 @@ class _StudentCard extends ConsumerWidget {
                           Expanded(
                             child: Text(
                               email.toString(),
-                              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                              style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -283,12 +284,12 @@ class _StudentCard extends ConsumerWidget {
                           const SizedBox(width: 5),
                           Text(
                             phone.toString(),
-                            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
                           ),
                         ],
                       ),
                       const SizedBox(height: 12),
-                      const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                      Divider(height: 1, color: theme.dividerColor),
                       const SizedBox(height: 10),
 
                       // Pass and Route details (Watched asynchronously)
@@ -320,10 +321,10 @@ class _StudentCard extends ConsumerWidget {
                                     Expanded(
                                       child: Text(
                                         routeName.toString(),
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w600,
-                                          color: Color(0xFF334155),
+                                          color: theme.colorScheme.onSurface,
                                         ),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
@@ -412,10 +413,11 @@ class _StudentDetailsSheetState extends ConsumerState<_StudentDetailsSheet> {
           minChildSize: 0.6,
           maxChildSize: 0.97,
           builder: (context, scrollController) {
+            final theme = Theme.of(context);
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
               ),
               child: Column(
                 children: [
@@ -521,6 +523,7 @@ class _StudentDetailsSheetState extends ConsumerState<_StudentDetailsSheet> {
                             final fareValue = pass?['fare'] ?? 'N/A';
                             final paymentStatus = pass?['paymentStatus'] ?? 'No Pass';
                             final passStatus = pass?['passStatus'] ?? 'No Pass';
+                            final bool isPassPaid = paymentStatus.toString().toLowerCase() == 'paid';
 
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -597,27 +600,59 @@ class _StudentDetailsSheetState extends ConsumerState<_StudentDetailsSheet> {
                                 if (pass != null) ...[
                                   _SectionHeader(title: 'Administrative Controls', icon: Icons.security_rounded),
                                   const SizedBox(height: 14),
+                                  if (!isPassPaid && passStatus != 'Active' && passStatus != 'Approved') ...[
+                                    Container(
+                                      padding: const EdgeInsets.all(10),
+                                      margin: const EdgeInsets.only(bottom: 12),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.error.withOpacity(0.08),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: AppColors.error.withOpacity(0.2)),
+                                      ),
+                                      child: const Row(
+                                        children: [
+                                          Icon(Icons.lock_rounded, size: 16, color: AppColors.error),
+                                          SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              'Payment required before approval. Student has not completed verified payment.',
+                                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.error),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                   Row(
                                     children: [
-                                      if (passStatus != 'Active')
+                                      if (passStatus != 'Active' && passStatus != 'Approved')
                                         Expanded(
                                           child: ElevatedButton.icon(
                                             onPressed: _isPerformingAction
                                                 ? null
-                                                : () => _approvePass(studentId, adminUid),
-                                            icon: const Icon(Icons.check_circle_rounded, size: 16),
-                                            label: const Text('Approve Pass'),
+                                                : (isPassPaid
+                                                    ? () => _approvePass(studentId, adminUid)
+                                                    : () {
+                                                        ScaffoldMessenger.of(context).showSnackBar(
+                                                          const SnackBar(
+                                                            content: Text('Payment required before approval. Student must complete verified payment first.'),
+                                                            backgroundColor: AppColors.error,
+                                                          ),
+                                                        );
+                                                      }),
+                                            icon: Icon(isPassPaid ? Icons.check_circle_rounded : Icons.lock_outline_rounded, size: 16),
+                                            label: Text(isPassPaid ? 'Approve Pass' : 'Payment Required'),
                                             style: ElevatedButton.styleFrom(
-                                              backgroundColor: AppColors.success,
+                                              backgroundColor: isPassPaid ? AppColors.success : Colors.grey.shade400,
                                               foregroundColor: Colors.white,
                                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                               padding: const EdgeInsets.symmetric(vertical: 12),
                                             ),
                                           ),
                                         ),
-                                      if (passStatus != 'Active' && passStatus != 'Rejected')
+                                      if (passStatus != 'Active' && passStatus != 'Approved' && passStatus != 'Rejected')
                                         const SizedBox(width: 12),
-                                      if (passStatus != 'Rejected')
+                                      if (passStatus != 'Rejected' && passStatus != 'Active' && passStatus != 'Approved')
                                         Expanded(
                                           child: OutlinedButton.icon(
                                             onPressed: _isPerformingAction
@@ -625,6 +660,22 @@ class _StudentDetailsSheetState extends ConsumerState<_StudentDetailsSheet> {
                                                 : () => _rejectPass(studentId),
                                             icon: const Icon(Icons.cancel_rounded, size: 16),
                                             label: const Text('Reject Pass'),
+                                            style: OutlinedButton.styleFrom(
+                                              foregroundColor: AppColors.error,
+                                              side: const BorderSide(color: AppColors.error),
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                              padding: const EdgeInsets.symmetric(vertical: 12),
+                                            ),
+                                          ),
+                                        ),
+                                      if (passStatus == 'Active' || passStatus == 'Approved')
+                                        Expanded(
+                                          child: OutlinedButton.icon(
+                                            onPressed: _isPerformingAction
+                                                ? null
+                                                : () => _revokePass(studentId),
+                                            icon: const Icon(Icons.block_rounded, size: 16),
+                                            label: const Text('Revoke Pass'),
                                             style: OutlinedButton.styleFrom(
                                               foregroundColor: AppColors.error,
                                               side: const BorderSide(color: AppColors.error),
@@ -779,6 +830,64 @@ class _StudentDetailsSheetState extends ConsumerState<_StudentDetailsSheet> {
         await AdminRepository().rejectStudentPass(uid, reasonController.text.trim());
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Bus pass application rejected'), backgroundColor: AppColors.success),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
+        );
+      } finally {
+        if (mounted) setState(() => _isPerformingAction = false);
+      }
+    }
+  }
+
+  Future<void> _revokePass(String uid) async {
+    final reasonController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Revoke Active Pass'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Are you sure you want to revoke this student\'s bus pass? They will no longer be authorized to board buses:'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              decoration: InputDecoration(
+                hintText: 'Enter revocation reason...',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () {
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('Revocation reason is required')),
+                );
+                return;
+              }
+              Navigator.pop(ctx, true);
+            },
+            child: const Text('Confirm Revoke', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      setState(() => _isPerformingAction = true);
+      try {
+        final adminUid = ref.read(authControllerProvider).user?.uid ?? '';
+        await AdminRepository().revokePass(uid, reasonController.text.trim(), adminUid);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Bus pass revoked successfully'), backgroundColor: AppColors.error),
         );
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(

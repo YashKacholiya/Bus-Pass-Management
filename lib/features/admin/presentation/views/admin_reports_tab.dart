@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,9 +7,15 @@ import 'package:icem_bus/config/theme/app_colors.dart';
 import 'package:icem_bus/features/admin/domain/admin_providers.dart';
 import 'package:icem_bus/features/driver/domain/driver_providers.dart';
 import 'package:icem_bus/features/admin/presentation/views/admin_widgets.dart';
+import 'package:icem_bus/features/auth/domain/entities/user_entity.dart';
 import 'package:icem_bus/features/admin/presentation/views/admin_charts.dart';
 import 'package:icem_bus/features/admin/presentation/views/report_exporter.dart';
 
+/// Reports & Analytics Screen for Admin Console
+///
+/// Fully functional, production-ready dashboard calculating real-time metrics,
+/// interactive charts, multi-level filters, directory views, and PDF/CSV export
+/// directly from actual live Firestore collections: users, drivers, buses, bus_routes.
 class AdminReportsTab extends ConsumerStatefulWidget {
   const AdminReportsTab({super.key});
 
@@ -18,25 +24,42 @@ class AdminReportsTab extends ConsumerStatefulWidget {
 }
 
 class _AdminReportsTabState extends ConsumerState<AdminReportsTab> {
+  // Search & Filters State
   String _searchQuery = '';
-  String _filterType = 'This Month';
+  String _dateFilter = 'All Time'; // Default 'All Time' so existing data is never filtered out
+  String _roleFilter = 'All Roles';
+  String _statusFilter = 'All Statuses';
+
   DateTime? _customStartDate;
   DateTime? _customEndDate;
-  int _selectedReportTab = 0; // 0: Students, 1: Buses, 2: Routes, 3: Payments, 4: Passes
+
+  // Selected Explorer Tab:
+  // 0: Overview & Visual Analytics
+  // 1: Users & Students
+  // 2: Drivers
+  // 3: Fleet & Buses
+  // 4: Routes & Network
+  // 5: Issued Passes (if data exists)
+  // 6: Payments & Revenue (if data exists)
+  int _selectedReportTab = 0;
+
+  bool _isRefreshing = false;
 
   @override
   void initState() {
     super.initState();
-    // Default custom date range to current month
     final now = DateTime.now();
     _customStartDate = DateTime(now.year, now.month, 1);
     _customEndDate = DateTime(now.year, now.month + 1, 0);
   }
 
   /// Calculates the active DateTimeRange based on the selected filter type.
-  DateTimeRange _getCurrentDateRange() {
+  /// Returns null for 'All Time' so no date boundaries are imposed.
+  DateTimeRange? _getCurrentDateRange() {
     final now = DateTime.now();
-    switch (_filterType) {
+    switch (_dateFilter) {
+      case 'All Time':
+        return null;
       case 'Today':
         return DateTimeRange(
           start: DateTime(now.year, now.month, now.day, 0, 0, 0),
@@ -67,20 +90,25 @@ class _AdminReportsTabState extends ConsumerState<AdminReportsTab> {
           end: DateTime(now.year, now.month + 1, 0, 23, 59, 59),
         );
       default:
-        return DateTimeRange(
-          start: DateTime(now.year, now.month, 1, 0, 0, 0),
-          end: DateTime(now.year, now.month + 1, 0, 23, 59, 59),
-        );
+        return null;
     }
   }
 
-  /// Date parser helper
-  DateTime? _getDocDate(Map<String, dynamic> doc, String fieldKey) {
-    final val = doc[fieldKey];
-    if (val == null) return null;
-    if (val is Timestamp) return val.toDate();
-    if (val is String) return DateTime.tryParse(val);
-    if (val is int) return DateTime.fromMillisecondsSinceEpoch(val);
+  /// Date parser helper supporting Timestamp, ISO String, or int millis
+  DateTime? _getDocDate(Map<String, dynamic> doc, [String preferredKey = 'createdAt']) {
+    final keys = [preferredKey, 'createdAt', 'updatedAt', 'paymentDate', 'dateJoined'];
+    for (final k in keys) {
+      final val = doc[k];
+      if (val != null) {
+        if (val is Timestamp) return val.toDate();
+        if (val is DateTime) return val;
+        if (val is String) {
+          final dt = DateTime.tryParse(val);
+          if (dt != null) return dt;
+        }
+        if (val is int) return DateTime.fromMillisecondsSinceEpoch(val);
+      }
+    }
     return null;
   }
 
@@ -90,6 +118,8 @@ class _AdminReportsTabState extends ConsumerState<AdminReportsTab> {
     DateTime? dt;
     if (dateField is Timestamp) {
       dt = dateField.toDate();
+    } else if (dateField is DateTime) {
+      dt = dateField;
     } else if (dateField is String) {
       dt = DateTime.tryParse(dateField);
     } else if (dateField is int) {
@@ -99,8 +129,11 @@ class _AdminReportsTabState extends ConsumerState<AdminReportsTab> {
     return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
   }
 
-  /// Display name of selected date filter range
-  String _getDateRangeString(DateTimeRange range) {
+  /// Returns user-friendly date filter description
+  String _getDateFilterDescription(DateTimeRange? range) {
+    if (_dateFilter == 'All Time' || range == null) {
+      return 'All Time (Complete History)';
+    }
     return '${_formatDate(range.start)} - ${_formatDate(range.end)}';
   }
 
@@ -132,685 +165,1166 @@ class _AdminReportsTabState extends ConsumerState<AdminReportsTab> {
       setState(() {
         _customStartDate = pickedRange.start;
         _customEndDate = pickedRange.end;
-        _filterType = 'Custom Date Range';
+        _dateFilter = 'Custom Date Range';
       });
+    }
+  }
+
+  /// Invalidate and refresh all real-time Firestore stream providers
+  Future<void> _handleRefresh() async {
+    setState(() => _isRefreshing = true);
+    try {
+      ref.invalidate(studentsListStreamProvider);
+      ref.invalidate(allUsersListStreamProvider);
+      ref.invalidate(driversListStreamProvider);
+      ref.invalidate(busesListStreamProvider);
+      ref.invalidate(routesListStreamProvider);
+      ref.invalidate(paymentsListStreamProvider);
+      ref.invalidate(busPassesListStreamProvider);
+      ref.invalidate(applicationsListStreamProvider);
+
+      await Future.delayed(const Duration(milliseconds: 600));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Reports & Analytics data refreshed from live Firestore.'),
+            backgroundColor: AppColors.success,
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Watch raw streams
-    final studentsAsync = ref.watch(studentsListStreamProvider);
+    final theme = Theme.of(context);
+
+    // Watch actual live Firestore stream providers
+    final usersAsync = ref.watch(allUsersListStreamProvider);
     final driversAsync = ref.watch(driversListStreamProvider);
     final busesAsync = ref.watch(busesListStreamProvider);
     final routesAsync = ref.watch(routesListStreamProvider);
     final paymentsAsync = ref.watch(paymentsListStreamProvider);
     final passesAsync = ref.watch(busPassesListStreamProvider);
-    final appsAsync = ref.watch(applicationsListStreamProvider);
 
-    // Resolve data lists safely
-    final students = studentsAsync.value ?? [];
-    final drivers = driversAsync.value ?? [];
-    final buses = busesAsync.value ?? [];
-    final routes = routesAsync.value ?? [];
-    final payments = paymentsAsync.value ?? [];
-    final passes = passesAsync.value ?? [];
-    final apps = appsAsync.value ?? [];
+    // Resolve raw lists safely
+    final rawUsers = usersAsync.valueOrNull ?? [];
+    final rawDrivers = driversAsync.valueOrNull ?? [];
+    final rawBuses = busesAsync.valueOrNull ?? [];
+    final rawRoutes = routesAsync.valueOrNull ?? [];
+    final rawPayments = paymentsAsync.valueOrNull ?? [];
+    final rawPasses = passesAsync.valueOrNull ?? [];
 
-    String getStatValue(AsyncValue asyncData, List<Map<String, dynamic>> filteredList, {int Function(List<Map<String, dynamic>>)? customCounter}) {
-      if (asyncData.hasError) return 'Error';
-      if (asyncData.isLoading && !asyncData.hasValue) return '...';
-      if (customCounter != null) return customCounter(filteredList).toString();
-      return filteredList.length.toString();
-    }
-
-    String getRevenueStat(AsyncValue asyncData, List<Map<String, dynamic>> filteredPayments) {
-      if (asyncData.hasError) return 'Error';
-      if (asyncData.isLoading && !asyncData.hasValue) return '...';
-      double total = 0.0;
-      for (final p in filteredPayments) {
-        if (p['paymentStatus'] == 'Paid') {
-          final amt = p['amount'];
-          if (amt is num) total += amt.toDouble();
-          else if (amt is String) total += double.tryParse(amt) ?? 0.0;
-        }
-      }
-      return '₹${total.toStringAsFixed(0)}';
-    }
-
-
-    // Filter range boundaries
+    // Date range filter helper
     final range = _getCurrentDateRange();
-    final start = range.start;
-    final end = range.end;
-
-    bool isWithinRange(DateTime? date) {
+    bool isWithinDateRange(DateTime? date) {
+      if (range == null) return true; // 'All Time'
       if (date == null) return false;
-      return date.isAfter(start.subtract(const Duration(seconds: 1))) &&
-          date.isBefore(end.add(const Duration(seconds: 1)));
+      return date.isAfter(range.start.subtract(const Duration(seconds: 1))) &&
+          date.isBefore(range.end.add(const Duration(seconds: 1)));
     }
 
-    // Apply date range filters
-    final filteredStudents = students.where((s) => isWithinRange(_getDocDate(s, 'createdAt'))).toList();
-    final filteredDrivers = drivers.where((d) => isWithinRange(_getDocDate(d, 'createdAt'))).toList();
-    final filteredBuses = buses.where((b) => isWithinRange(_getDocDate(b, 'createdAt'))).toList();
-    final filteredRoutes = routes.where((r) => isWithinRange(_getDocDate(r, 'createdAt'))).toList();
-    final filteredPayments = payments.where((p) => isWithinRange(_getDocDate(p, 'paymentDate') ?? _getDocDate(p, 'createdAt'))).toList();
-    final filteredPasses = passes.where((ps) => isWithinRange(_getDocDate(ps, 'createdAt') ?? _getDocDate(ps, 'updatedAt'))).toList();
-    final filteredApps = apps.where((a) => isWithinRange(_getDocDate(a, 'createdAt'))).toList();
-
-    // 1. Stats logic is now handled in the getter methods.
-
-    // 2. Charts Data computations
-    // Helper to group by month
-    String formatMonthYear(DateTime date) {
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      return '${months[date.month - 1]} ${date.year}';
+    // Role filter helper
+    bool matchesRole(Map<String, dynamic> user) {
+      if (_roleFilter == 'All Roles') return true;
+      if (_roleFilter == 'Student') return UserEntity.isStudentUser(user);
+      final role = (user['role'] ?? '').toString().toLowerCase();
+      return role == _roleFilter.toLowerCase();
     }
 
-    // Group pass applications by Month
-    final Map<String, double> appCountsByMonth = {};
-    for (final a in filteredApps) {
-      final date = _getDocDate(a, 'createdAt');
-      if (date != null) {
-        final key = formatMonthYear(date);
-        appCountsByMonth[key] = (appCountsByMonth[key] ?? 0.0) + 1;
+    // Status filter helper
+    bool matchesStatus(Map<String, dynamic> item, {bool isUser = false}) {
+      if (_statusFilter == 'All Statuses') return true;
+      if (isUser) {
+        final isActive = item['isActive'] != false;
+        if (_statusFilter == 'Active') return isActive;
+        if (_statusFilter == 'Inactive') return !isActive;
+        return true;
       }
+      final status = (item['status'] ?? 'Active').toString().toLowerCase();
+      if (_statusFilter == 'Active') return status == 'active';
+      if (_statusFilter == 'Inactive') return status == 'inactive' || status == 'on leave';
+      return true;
     }
 
-    // Group paid revenue by Month
-    final Map<String, double> revenueByMonth = {};
-    for (final p in filteredPayments) {
-      if (p['paymentStatus'] == 'Paid') {
-        final date = _getDocDate(p, 'paymentDate') ?? _getDocDate(p, 'createdAt');
-        if (date != null) {
-          final key = formatMonthYear(date);
-          final amt = p['amount'];
-          double value = 0.0;
-          if (amt is num) {
-            value = amt.toDouble();
-          } else if (amt is String) {
-            value = double.tryParse(amt) ?? 0.0;
-          }
-          revenueByMonth[key] = (revenueByMonth[key] ?? 0.0) + value;
-        }
-      }
-    }
+    // Apply active filters to raw datasets
+    final filteredUsers = rawUsers.where((u) {
+      return isWithinDateRange(_getDocDate(u)) && matchesRole(u) && matchesStatus(u, isUser: true);
+    }).toList();
 
-    // Convert grouped values to ChartDataPoints. If empty, generate standard 6 months fallback.
-    List<ChartDataPoint> generateChartData(Map<String, double> dataMap) {
-      if (dataMap.isEmpty) {
-        final fallbackList = <ChartDataPoint>[];
-        final now = DateTime.now();
-        for (int i = 5; i >= 0; i--) {
-          final d = DateTime(now.year, now.month - i, 1);
-          final key = formatMonthYear(d);
-          fallbackList.add(ChartDataPoint(key, 0.0));
-        }
-        return fallbackList;
-      }
-      return dataMap.entries
-          .map((e) => ChartDataPoint(e.key, e.value))
-          .toList()
-        ..sort((a, b) {
-          // Simple month sorting: parse keys to dates
-          DateTime parseKey(String key) {
-            final parts = key.split(' ');
-            if (parts.length < 2) return DateTime.now();
-            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            final mIndex = months.indexOf(parts[0]) + 1;
-            final y = int.tryParse(parts[1]) ?? 2026;
-            return DateTime(y, mIndex);
-          }
-          return parseKey(a.label).compareTo(parseKey(b.label));
-        });
-    }
+    final filteredDrivers = rawDrivers.where((d) {
+      return isWithinDateRange(_getDocDate(d)) && matchesStatus(d);
+    }).toList();
 
-    final passAppsPoints = generateChartData(appCountsByMonth);
-    final revenuePoints = generateChartData(revenueByMonth);
+    final filteredBuses = rawBuses.where((b) {
+      return isWithinDateRange(_getDocDate(b)) && matchesStatus(b);
+    }).toList();
 
-    // Pass status distribution donut data
-    final activePassesCount = filteredPasses.where((p) => p['passStatus'] == 'Active').length.toDouble();
-    final expiredPassesCount = filteredPasses.where((p) => p['passStatus'] == 'Expired').length.toDouble();
-    final Map<String, double> passDistribution = {
-      'Active': activePassesCount,
-      'Expired': expiredPassesCount,
-      'Suspended': filteredPasses.where((p) => p['passStatus'] == 'Suspended').length.toDouble(),
-    };
-    final otherPassStatusCount = filteredPasses
-        .where((p) => p['passStatus'] != 'Active' && p['passStatus'] != 'Expired' && p['passStatus'] != 'Suspended')
-        .length
-        .toDouble();
-    if (otherPassStatusCount > 0) {
-      passDistribution['Other'] = otherPassStatusCount;
-    }
+    final filteredRoutes = rawRoutes.where((r) {
+      return isWithinDateRange(_getDocDate(r)) && matchesStatus(r);
+    }).toList();
 
-    // Route-wise student count
-    final Map<String, double> routeWiseCounts = {};
-    for (final pass in filteredPasses) {
-      final routeName = pass['route'] ?? pass['routeName'] ?? 'Unknown Route';
-      routeWiseCounts[routeName] = (routeWiseCounts[routeName] ?? 0.0) + 1;
-    }
-    final routePoints = routeWiseCounts.entries
-        .map((e) => ChartDataPoint(e.key, e.value))
-        .toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final topRoutes = routePoints.take(5).toList();
+    final filteredPayments = rawPayments.where((p) {
+      return isWithinDateRange(_getDocDate(p, 'paymentDate') ?? _getDocDate(p, 'createdAt'));
+    }).toList();
 
-    // Bus-wise student count (Map passes -> route -> assignedBus)
-    final routeToBusMap = <String, String>{};
-    for (final bus in filteredBuses) {
-      final routeId = bus['assignedRouteId'] as String?;
-      final busNo = bus['busNo'] as String? ?? 'Bus-${bus['busId']}';
-      if (routeId != null && routeId.isNotEmpty) {
-        routeToBusMap[routeId] = busNo;
-      }
-    }
-    final Map<String, double> busWiseCounts = {};
-    for (final pass in filteredPasses) {
-      final rId = pass['routeId'] as String?;
-      if (rId != null && rId.isNotEmpty) {
-        final busNo = routeToBusMap[rId] ?? 'No Bus Assigned';
-        busWiseCounts[busNo] = (busWiseCounts[busNo] ?? 0.0) + 1;
-      } else {
-        busWiseCounts['No Route Assigned'] = (busWiseCounts['No Route Assigned'] ?? 0.0) + 1;
-      }
-    }
-    final busPoints = busWiseCounts.entries
-        .map((e) => ChartDataPoint(e.key, e.value))
-        .toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final topBuses = busPoints.take(5).toList();
+    final filteredPasses = rawPasses.where((ps) {
+      return isWithinDateRange(_getDocDate(ps, 'createdAt') ?? _getDocDate(ps, 'updatedAt'));
+    }).toList();
 
-    // Driver-wise Bus Assignment (Assigned vs Unassigned)
-    final driversAssigned = filteredDrivers.where((d) => d['assignedBusId'] != null && d['assignedBusId'].toString().isNotEmpty).length.toDouble();
-    final driversUnassigned = filteredDrivers.length.toDouble() - driversAssigned;
-    final Map<String, double> driverBusAssignment = {};
-    if (driversAssigned > 0) driverBusAssignment['Assigned'] = driversAssigned;
-    if (driversUnassigned > 0) driverBusAssignment['Unassigned'] = driversUnassigned;
-
-    // 3. Apply Search query to active reports lists
+    // ── SEARCH FILTERING ──
     final search = _searchQuery.trim().toLowerCase();
 
-    List<Map<String, dynamic>> getSearchedStudents() {
-      if (search.isEmpty) return filteredStudents;
-      return filteredStudents.where((s) {
-        final name = (s['fullName'] ?? '').toString().toLowerCase();
-        final prn = (s['prn'] ?? '').toString().toLowerCase();
-        final email = (s['email'] ?? '').toString().toLowerCase();
-        return name.contains(search) || prn.contains(search) || email.contains(search);
-      }).toList();
+    final searchedUsers = search.isEmpty
+        ? filteredUsers
+        : filteredUsers.where((u) {
+            final name = (u['fullName'] ?? '').toString().toLowerCase();
+            final email = (u['email'] ?? '').toString().toLowerCase();
+            final prn = (u['prn'] ?? '').toString().toLowerCase();
+            final collegeId = (u['collegeId'] ?? '').toString().toLowerCase();
+            final course = (u['course'] ?? '').toString().toLowerCase();
+            final dept = (u['department'] ?? '').toString().toLowerCase();
+            final mobile = (u['mobile'] ?? '').toString().toLowerCase();
+            return name.contains(search) ||
+                email.contains(search) ||
+                prn.contains(search) ||
+                collegeId.contains(search) ||
+                course.contains(search) ||
+                dept.contains(search) ||
+                mobile.contains(search);
+          }).toList();
+
+    final searchedDrivers = search.isEmpty
+        ? filteredDrivers
+        : filteredDrivers.where((d) {
+            final name = (d['fullName'] ?? '').toString().toLowerCase();
+            final driverId = (d['driverId'] ?? '').toString().toLowerCase();
+            final mobile = (d['mobile'] ?? '').toString().toLowerCase();
+            final license = (d['licenseNumber'] ?? '').toString().toLowerCase();
+            final bus = (d['assignedBusNumber'] ?? '').toString().toLowerCase();
+            return name.contains(search) ||
+                driverId.contains(search) ||
+                mobile.contains(search) ||
+                license.contains(search) ||
+                bus.contains(search);
+          }).toList();
+
+    final searchedBuses = search.isEmpty
+        ? filteredBuses
+        : filteredBuses.where((b) {
+            final busNumber = (b['busNumber'] ?? b['busNo'] ?? '').toString().toLowerCase();
+            final busName = (b['busName'] ?? '').toString().toLowerCase();
+            final reg = (b['registrationNumber'] ?? '').toString().toLowerCase();
+            final driver = (b['driverName'] ?? '').toString().toLowerCase();
+            final phone = (b['driverPhone'] ?? '').toString().toLowerCase();
+            return busNumber.contains(search) ||
+                busName.contains(search) ||
+                reg.contains(search) ||
+                driver.contains(search) ||
+                phone.contains(search);
+          }).toList();
+
+    final searchedRoutes = search.isEmpty
+        ? filteredRoutes
+        : filteredRoutes.where((r) {
+            final name = (r['routeName'] ?? r['name'] ?? '').toString().toLowerCase();
+            final number = (r['routeNumber'] ?? r['number'] ?? '').toString().toLowerCase();
+            final origin = (r['origin'] ?? r['source'] ?? r['startLocation'] ?? '').toString().toLowerCase();
+            final dest = (r['destination'] ?? r['dest'] ?? r['endLocation'] ?? '').toString().toLowerCase();
+            return name.contains(search) || number.contains(search) || origin.contains(search) || dest.contains(search);
+          }).toList();
+
+    final searchedPayments = search.isEmpty
+        ? filteredPayments
+        : filteredPayments.where((p) {
+            final receipt = (p['receiptId'] ?? p['id'] ?? '').toString().toLowerCase();
+            final student = (p['studentName'] ?? '').toString().toLowerCase();
+            final prn = (p['prn'] ?? '').toString().toLowerCase();
+            return receipt.contains(search) || student.contains(search) || prn.contains(search);
+          }).toList();
+
+    final searchedPasses = search.isEmpty
+        ? filteredPasses
+        : filteredPasses.where((ps) {
+            final passId = (ps['passId'] ?? ps['id'] ?? '').toString().toLowerCase();
+            final name = (ps['studentName'] ?? ps['fullName'] ?? '').toString().toLowerCase();
+            final route = (ps['route'] ?? ps['routeName'] ?? '').toString().toLowerCase();
+            return passId.contains(search) || name.contains(search) || route.contains(search);
+          }).toList();
+
+    // ── METRIC COUNTS (Calculated dynamically strictly from Firestore data) ──
+    final totalUsersCount = filteredUsers.length;
+    final activeUsersCount = filteredUsers.where((u) => u['isActive'] != false).length;
+    final inactiveUsersCount = filteredUsers.where((u) => u['isActive'] == false).length;
+    final totalStudentsCount = filteredUsers.where((u) => (u['role']?.toString().toLowerCase() ?? 'student') == 'student').length;
+
+    final totalDriversCount = filteredDrivers.length;
+    final activeDriversCount = filteredDrivers.where((d) => (d['status']?.toString().toLowerCase() ?? 'active') == 'active').length;
+    final onLeaveDriversCount = filteredDrivers.where((d) => (d['status']?.toString().toLowerCase() ?? '') == 'on leave').length;
+    final inactiveDriversCount = filteredDrivers.where((d) => (d['status']?.toString().toLowerCase() ?? '') == 'inactive').length;
+    final assignedDriversCount = filteredDrivers.where((d) => d['assignedBusId'] != null && d['assignedBusId'].toString().isNotEmpty).length;
+
+    final totalBusesCount = filteredBuses.length;
+    final activeBusesCount = filteredBuses.where((b) => (b['status']?.toString().toLowerCase() ?? 'active') == 'active').length;
+    final maintenanceBusesCount = filteredBuses.where((b) => (b['status']?.toString().toLowerCase() ?? '') == 'maintenance').length;
+    final inactiveBusesCount = filteredBuses.where((b) => (b['status']?.toString().toLowerCase() ?? '') == 'inactive').length;
+    int totalFleetCapacity = 0;
+    for (final b in filteredBuses) {
+      final cap = b['capacity'];
+      if (cap is num) {
+        totalFleetCapacity += cap.toInt();
+      } else if (cap is String) {
+        totalFleetCapacity += int.tryParse(cap) ?? 0;
+      }
+    }
+    final assignedBusesCount = filteredBuses.where((b) => b['assignedRouteId'] != null && b['assignedRouteId'].toString().isNotEmpty).length;
+
+    final totalRoutesCount = filteredRoutes.length;
+    final activeRoutesCount = filteredRoutes.where((r) => (r['status']?.toString().toLowerCase() ?? 'active') == 'active').length;
+    final inactiveRoutesCount = filteredRoutes.where((r) => (r['status']?.toString().toLowerCase() ?? '') == 'inactive').length;
+    double totalNetworkKm = 0.0;
+    for (final r in filteredRoutes) {
+      final dist = r['distanceKm'] ?? r['distance'];
+      if (dist is num) {
+        totalNetworkKm += dist.toDouble();
+      } else if (dist is String) {
+        totalNetworkKm += double.tryParse(dist) ?? 0.0;
+      }
+    }
+    final avgRouteKm = totalRoutesCount > 0 ? (totalNetworkKm / totalRoutesCount) : 0.0;
+
+    // Optional Collections Real Counts
+    final realPassesCount = filteredPasses.length;
+    final realActivePassesCount = filteredPasses.where((ps) => ps['passStatus'] == 'Active').length;
+    double realRevenue = 0.0;
+    for (final p in filteredPayments) {
+      if (p['paymentStatus'] == 'Paid' || p['paymentStatus'] == 'Success') {
+        final amt = p['amount'];
+        if (amt is num) {
+          realRevenue += amt.toDouble();
+        } else if (amt is String) {
+          realRevenue += double.tryParse(amt) ?? 0.0;
+        }
+      }
     }
 
-    List<Map<String, dynamic>> getSearchedDrivers() {
-      if (search.isEmpty) return filteredDrivers;
-      return filteredDrivers.where((d) {
-        final name = (d['fullName'] ?? '').toString().toLowerCase();
-        final driverId = (d['driverId'] ?? '').toString().toLowerCase();
-        final mobile = (d['mobile'] ?? '').toString().toLowerCase();
-        return name.contains(search) || driverId.contains(search) || mobile.contains(search);
-      }).toList();
+    // ── CHARTS DATA CALCULATIONS (STRICTLY REAL DATA) ──
+    // 1. Users by Role Donut
+    final Map<String, double> usersByRole = {};
+    for (final u in filteredUsers) {
+      final role = (u['role'] ?? 'Student').toString();
+      final capitalizedRole = role.isNotEmpty ? '${role[0].toUpperCase()}${role.substring(1).toLowerCase()}' : 'User';
+      usersByRole[capitalizedRole] = (usersByRole[capitalizedRole] ?? 0.0) + 1.0;
     }
 
-    List<Map<String, dynamic>> getSearchedBuses() {
-      if (search.isEmpty) return filteredBuses;
-      return filteredBuses.where((b) {
-        final busNo = (b['busNo'] ?? '').toString().toLowerCase();
-        final driverName = (b['driverName'] ?? '').toString().toLowerCase();
-        return busNo.contains(search) || driverName.contains(search);
-      }).toList();
+    // 2. User Status Donut
+    final Map<String, double> usersByStatus = {};
+    if (activeUsersCount > 0) usersByStatus['Active'] = activeUsersCount.toDouble();
+    if (inactiveUsersCount > 0) usersByStatus['Inactive'] = inactiveUsersCount.toDouble();
+
+    // 3. Driver Status Donut
+    final Map<String, double> driversByStatus = {};
+    if (activeDriversCount > 0) driversByStatus['Active'] = activeDriversCount.toDouble();
+    if (onLeaveDriversCount > 0) driversByStatus['On Leave'] = onLeaveDriversCount.toDouble();
+    if (inactiveDriversCount > 0) driversByStatus['Inactive'] = inactiveDriversCount.toDouble();
+
+    // 4. Bus Fleet Status Donut
+    final Map<String, double> busesByStatus = {};
+    if (activeBusesCount > 0) busesByStatus['Active'] = activeBusesCount.toDouble();
+    if (maintenanceBusesCount > 0) busesByStatus['Maintenance'] = maintenanceBusesCount.toDouble();
+    if (inactiveBusesCount > 0) busesByStatus['Inactive'] = inactiveBusesCount.toDouble();
+
+    // 5. Routes Status Donut
+    final Map<String, double> routesByStatus = {};
+    if (activeRoutesCount > 0) routesByStatus['Active'] = activeRoutesCount.toDouble();
+    if (inactiveRoutesCount > 0) routesByStatus['Inactive'] = inactiveRoutesCount.toDouble();
+
+    // 6. User Registration Trend Line Chart (Grouped by actual createdAt)
+    final Map<String, double> usersByMonth = {};
+    for (final u in filteredUsers) {
+      final date = _getDocDate(u, 'createdAt');
+      if (date != null) {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        final key = '${months[date.month - 1]} ${date.year}';
+        usersByMonth[key] = (usersByMonth[key] ?? 0.0) + 1.0;
+      }
     }
 
-    List<Map<String, dynamic>> getSearchedRoutes() {
-      if (search.isEmpty) return filteredRoutes;
-      return filteredRoutes.where((r) {
-        final routeName = (r['routeName'] ?? '').toString().toLowerCase();
-        final start = (r['startLocation'] ?? '').toString().toLowerCase();
-        final end = (r['endLocation'] ?? '').toString().toLowerCase();
-        return routeName.contains(search) || start.contains(search) || end.contains(search);
-      }).toList();
+    final userTrendPoints = usersByMonth.entries
+        .map((e) => ChartDataPoint(e.key, e.value))
+        .toList()
+      ..sort((a, b) {
+        // Chronological sorting
+        final partsA = a.label.split(' ');
+        final partsB = b.label.split(' ');
+        if (partsA.length == 2 && partsB.length == 2) {
+          const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          final mA = months.indexOf(partsA[0]) + 1;
+          final yA = int.tryParse(partsA[1]) ?? 2026;
+          final mB = months.indexOf(partsB[0]) + 1;
+          final yB = int.tryParse(partsB[1]) ?? 2026;
+          return DateTime(yA, mA).compareTo(DateTime(yB, mB));
+        }
+        return a.label.compareTo(b.label);
+      });
+
+    // 7. Top Courses Horizontal Bar Chart
+    final Map<String, double> coursesDistribution = {};
+    for (final u in filteredUsers) {
+      final course = (u['course'] ?? '').toString().trim();
+      if (course.isNotEmpty) {
+        coursesDistribution[course] = (coursesDistribution[course] ?? 0.0) + 1.0;
+      }
     }
+    final topCourses = coursesDistribution.entries
+        .map((e) => ChartDataPoint(e.key, e.value))
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final topCourses5 = topCourses.take(5).toList();
 
-    List<Map<String, dynamic>> getSearchedPayments() {
-      if (search.isEmpty) return filteredPayments;
-      return filteredPayments.where((p) {
-        final receiptId = (p['receiptId'] ?? '').toString().toLowerCase();
-        final name = (p['studentName'] ?? '').toString().toLowerCase();
-        final prn = (p['prn'] ?? '').toString().toLowerCase();
-        return receiptId.contains(search) || name.contains(search) || prn.contains(search);
-      }).toList();
+    // 8. Top Routes by Distance Bar Chart
+    final List<ChartDataPoint> topRoutesPoints = [];
+    for (final r in filteredRoutes) {
+      final name = (r['routeName'] ?? r['name'] ?? 'Route').toString();
+      final dist = r['distanceKm'] ?? r['distance'];
+      double d = 0.0;
+      if (dist is num) {
+        d = dist.toDouble();
+      } else if (dist is String) {
+        d = double.tryParse(dist) ?? 0.0;
+      }
+      if (d > 0) {
+        topRoutesPoints.add(ChartDataPoint(name, d));
+      }
     }
+    topRoutesPoints.sort((a, b) => b.value.compareTo(a.value));
+    final topRoutes5 = topRoutesPoints.take(5).toList();
 
-    List<Map<String, dynamic>> getSearchedPasses() {
-      if (search.isEmpty) return filteredPasses;
-      return filteredPasses.where((ps) {
-        final passId = (ps['passId'] ?? '').toString().toLowerCase();
-        final name = (ps['studentName'] ?? ps['fullName'] ?? '').toString().toLowerCase();
-        final prn = (ps['prn'] ?? '').toString().toLowerCase();
-        final routeName = (ps['route'] ?? ps['routeName'] ?? '').toString().toLowerCase();
-        return passId.contains(search) || name.contains(search) || prn.contains(search) || routeName.contains(search);
-      }).toList();
-    }
-
-    final currentStudentsReport = getSearchedStudents();
-    final currentDriversReport = getSearchedDrivers();
-    final currentBusesReport = getSearchedBuses();
-    final currentRoutesReport = getSearchedRoutes();
-    final currentPaymentsReport = getSearchedPayments();
-    final currentPassesReport = getSearchedPasses();
-
-    // Responsive screen width adjustments
     final width = MediaQuery.of(context).size.width;
     final isDesktop = width >= 950;
     final isTablet = width >= 650 && width < 950;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+    final isInitialLoading = (usersAsync.isLoading && !usersAsync.hasValue) &&
+        (driversAsync.isLoading && !driversAsync.hasValue) &&
+        (busesAsync.isLoading && !busesAsync.hasValue) &&
+        (routesAsync.isLoading && !routesAsync.hasValue);
+
+    if (isInitialLoading) {
+      return Center(
         child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── HEADER SECTION ──
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Reports & Analytics',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                    SizedBox(height: 6),
-                    Text(
-                      'Real-time metrics, interactive charts, and system export features.',
-                      style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-                    ),
-                  ],
-                ),
-              ),
-              if (_filterType == 'Custom Date Range')
-                TextButton.icon(
-                  onPressed: _selectCustomDateRange,
-                  icon: const Icon(Icons.edit_calendar_rounded, size: 16, color: AppColors.primaryCrimson),
-                  label: const Text('Change Date Range', style: TextStyle(color: AppColors.primaryCrimson, fontSize: 13)),
-                ),
-            ],
-          ),
-          const SizedBox(height: 20),
-
-          // ── FILTERS AND SEARCH BAR ──
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFF1F5F9)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.date_range_rounded, color: Color(0xFF64748B), size: 18),
-                    const SizedBox(width: 8),
-                    const Text('Filter Date Range:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF475569))),
-                    const SizedBox(width: 8),
-                    Text(
-                      _getDateRangeString(range),
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.primaryCrimson),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                AdminFilterChips(
-                  filters: const ['Today', 'This Week', 'This Month', 'This Year', 'Custom Date Range'],
-                  selected: _filterType,
-                  onSelected: (val) async {
-                    if (val == 'Custom Date Range') {
-                      await _selectCustomDateRange();
-                    } else {
-                      setState(() {
-                        _filterType = val;
-                      });
-                    }
-                  },
-                ),
-                const SizedBox(height: 14),
-                AdminSearchBar(
-                  hintText: 'Search report data by Student, PRN, Route or Bus...',
-                  value: _searchQuery,
-                  onChanged: (q) => setState(() => _searchQuery = q),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // ── DASHBOARD STATISTICS GRID ──
-          const AdminSectionHeader(title: 'Dashboard Statistics'),
-          const SizedBox(height: 12),
-          GridView(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: isDesktop ? 3 : (isTablet ? 3 : 2),
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: isDesktop ? 1.4 : (isTablet ? 1.3 : 0.85), // Adjusted for mobile to prevent vertical overflow
-            ),
-            children: [
-              AdminStatCard(
-                label: 'Total Students',
-                value: getStatValue(studentsAsync, filteredStudents),
-                icon: Icons.people_alt_rounded,
-                color: AppColors.info,
-              ),
-              AdminStatCard(
-                label: 'Active Students',
-                value: getStatValue(studentsAsync, filteredStudents, customCounter: (list) => list.where((s) => s['isActive'] == true).length),
-                icon: Icons.person_add_alt_1_rounded,
-                color: AppColors.success,
-              ),
-              AdminStatCard(
-                label: 'Total Drivers',
-                value: getStatValue(driversAsync, filteredDrivers),
-                icon: Icons.person_pin_circle_rounded,
-                color: Colors.blue,
-              ),
-              AdminStatCard(
-                label: 'Total Buses',
-                value: getStatValue(busesAsync, filteredBuses),
-                icon: Icons.directions_bus_rounded,
-                color: Colors.purple,
-              ),
-              AdminStatCard(
-                label: 'Total Routes',
-                value: getStatValue(routesAsync, filteredRoutes),
-                icon: Icons.route_rounded,
-                color: Colors.deepOrange,
-              ),
-              AdminStatCard(
-                label: 'Active Passes',
-                value: getStatValue(passesAsync, filteredPasses, customCounter: (list) => list.where((p) => p['passStatus'] == 'Active').length),
-                icon: Icons.badge_rounded,
-                color: AppColors.success,
-              ),
-              AdminStatCard(
-                label: 'Pending Applications',
-                value: getStatValue(appsAsync, filteredApps, customCounter: (list) => list.where((a) => a['status'] == 'Pending').length),
-                icon: Icons.hourglass_empty_rounded,
-                color: Colors.amber.shade800,
-              ),
-              AdminStatCard(
-                label: 'Approved Applications',
-                value: getStatValue(appsAsync, filteredApps, customCounter: (list) => list.where((a) => a['status'] == 'Approved').length),
-                icon: Icons.verified_rounded,
-                color: Colors.teal,
-              ),
-              AdminStatCard(
-                label: 'Rejected Applications',
-                value: getStatValue(appsAsync, filteredApps, customCounter: (list) => list.where((a) => a['status'] == 'Rejected').length),
-                icon: Icons.gpp_bad_rounded,
-                color: AppColors.error,
-              ),
-              AdminStatCard(
-                label: 'Expired Passes',
-                value: getStatValue(passesAsync, filteredPasses, customCounter: (list) => list.where((p) => p['passStatus'] == 'Expired').length),
-                icon: Icons.running_with_errors_rounded,
-                color: Colors.blueGrey,
-              ),
-              AdminStatCard(
-                label: 'Total Revenue',
-                value: getRevenueStat(paymentsAsync, filteredPayments),
-                icon: Icons.currency_rupee_rounded,
-                color: Colors.indigo,
-              ),
-            ],
-          ),
-          const SizedBox(height: 32),
-
-          // ── CHARTS SECTION ──
-          const AdminSectionHeader(title: 'Visual Analytics'),
-          const SizedBox(height: 12),
-          if (isDesktop) ...[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: LineAreaChart(
-                    data: passAppsPoints,
-                    title: 'Monthly Pass Applications',
-                    primaryColor: AppColors.primaryCrimson,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: LineAreaChart(
-                    data: revenuePoints,
-                    title: 'Monthly Revenue Stream',
-                    primaryColor: Colors.indigo,
-                    valuePrefix: '₹',
-                  ),
-                ),
-              ],
-            ),
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(color: AppColors.primaryCrimson),
             const SizedBox(height: 16),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: DonutChartWidget(
-                    data: passDistribution,
-                    title: 'Pass Status Distribution',
-                    colors: const [AppColors.success, AppColors.warning, AppColors.error, Colors.blueGrey],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: HorizontalBarChart(
-                    data: topRoutes,
-                    title: 'Top Routes by Passenger Load',
-                    barColor: Colors.deepOrange,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: HorizontalBarChart(
-                    data: topBuses,
-                    title: 'Top Buses by Passenger Load',
-                    barColor: Colors.purple,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: DonutChartWidget(
-                    data: driverBusAssignment,
-                    title: 'Driver Bus Assignment',
-                    colors: const [AppColors.info, AppColors.warning],
-                  ),
-                ),
-              ],
-            ),
-          ] else ...[
-            LineAreaChart(
-              data: passAppsPoints,
-              title: 'Monthly Pass Applications',
-              primaryColor: AppColors.primaryCrimson,
-            ),
-            const SizedBox(height: 16),
-            LineAreaChart(
-              data: revenuePoints,
-              title: 'Monthly Revenue Stream',
-              primaryColor: Colors.indigo,
-              valuePrefix: '₹',
-            ),
-            const SizedBox(height: 16),
-            DonutChartWidget(
-              data: passDistribution,
-              title: 'Pass Status Distribution',
-              colors: const [AppColors.success, AppColors.warning, AppColors.error, Colors.blueGrey],
-            ),
-            const SizedBox(height: 16),
-            HorizontalBarChart(
-              data: topRoutes,
-              title: 'Top Routes by Passenger Load',
-              barColor: Colors.deepOrange,
-            ),
-            const SizedBox(height: 16),
-            HorizontalBarChart(
-              data: topBuses,
-              title: 'Top Buses by Passenger Load',
-              barColor: Colors.purple,
-            ),
-            const SizedBox(height: 16),
-            DonutChartWidget(
-              data: driverBusAssignment,
-              title: 'Driver Bus Assignment',
-              colors: const [AppColors.info, AppColors.warning],
+            Text(
+              'Loading live Firestore analytics...',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
-          const SizedBox(height: 32),
+        ),
+      );
+    }
 
-          // ── REPORTS EXPLORER TABS ──
-          const AdminSectionHeader(title: 'Reports Explorer'),
-          const SizedBox(height: 12),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            child: Row(
-              children: [
-                _buildReportTabButton(0, 'Students Report', Icons.people_outline_rounded),
-                _buildReportTabButton(5, 'Driver Report', Icons.person_pin_circle_rounded),
-                _buildReportTabButton(1, 'Buses Report', null, Image.asset('assets/images/bus_logo.png', width: 16, height: 16, color: _selectedReportTab == 1 ? Colors.white : const Color(0xFF475569), fit: BoxFit.contain)),
-                _buildReportTabButton(2, 'Routes Report', Icons.route_outlined),
-                _buildReportTabButton(3, 'Payments Report', Icons.payment_rounded),
-                _buildReportTabButton(4, 'Passes Report', Icons.badge_outlined),
-              ],
-            ),
+    final hasCriticalError = (usersAsync.hasError && !usersAsync.hasValue) &&
+        (driversAsync.hasError && !driversAsync.hasValue) &&
+        (busesAsync.hasError && !busesAsync.hasValue) &&
+        (routesAsync.hasError && !routesAsync.hasValue);
+
+    if (hasCriticalError) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline_rounded, size: 48, color: AppColors.error),
+              const SizedBox(height: 16),
+              Text(
+                'Unable to load analytics',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Please check your network connection and Firestore permissions.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: _handleRefresh,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Retry'),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  backgroundColor: AppColors.primaryCrimson,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 14),
+        ),
+      );
+    }
 
-          // Active report details card
-          Card(
-            color: Colors.white,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-              side: const BorderSide(color: Color(0xFFF1F5F9)),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Column(
+    return RefreshIndicator(
+      onRefresh: _handleRefresh,
+      color: AppColors.primaryCrimson,
+      child: SingleChildScrollView(
+        primary: false,
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── 1. HEADER SECTION & REFRESH ACTION ──
+            if (width < 600)
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Tab header actions
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      Image.asset('assets/images/bus_logo.png', width: 24, height: 24, fit: BoxFit.contain),
+                      const SizedBox(width: 8),
                       Text(
-                        _getReportTabTitle(),
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF0F172A)),
-                      ),
-                      Row(
-                        children: [
-                          OutlinedButton.icon(
-                            onPressed: () => _handleExport(isPdf: false, dateRangeStr: _getDateRangeString(range)),
-                            icon: const Icon(Icons.grid_on_rounded, size: 14, color: AppColors.success),
-                            label: const Text('Export Excel (CSV)', style: TextStyle(color: AppColors.success, fontSize: 12)),
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: AppColors.success),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          ElevatedButton.icon(
-                            onPressed: () => _handleExport(isPdf: true, dateRangeStr: _getDateRangeString(range)),
-                            icon: const Icon(Icons.picture_as_pdf_rounded, size: 14, color: Colors.white),
-                            label: const Text('Export PDF', style: TextStyle(color: Colors.white, fontSize: 12)),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primaryCrimson,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            ),
-                          ),
-                        ],
+                        'Reports & Analytics',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: theme.colorScheme.onSurface,
+                        ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 18),
-                  const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                  const SizedBox(height: 16),
-
-                  // Table content rendering
-                  _buildSelectedReportContent(
-                    studentsAsync: studentsAsync,
-                    driversAsync: driversAsync,
-                    busesAsync: busesAsync,
-                    routesAsync: routesAsync,
-                    paymentsAsync: paymentsAsync,
-                    passesAsync: passesAsync,
-                    studentsReport: currentStudentsReport,
-                    driversReport: currentDriversReport,
-                    busesReport: currentBusesReport,
-                    routesReport: currentRoutesReport,
-                    paymentsReport: currentPaymentsReport,
-                    passesReport: currentPassesReport,
+                  const SizedBox(height: 4),
+                  Text(
+                    'Live Firestore metrics, directory audits, dynamic charts, and exports.',
+                    style: TextStyle(fontSize: 12.5, color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      IconButton.filledTonal(
+                        tooltip: 'Refresh Analytics',
+                        onPressed: _isRefreshing ? null : _handleRefresh,
+                        icon: _isRefreshing
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryCrimson),
+                              )
+                            : const Icon(Icons.refresh_rounded, size: 20, color: AppColors.primaryCrimson),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: () => _handleExportAction(
+                          isPdf: false,
+                          dateRangeStr: _getDateFilterDescription(range),
+                          users: searchedUsers,
+                          drivers: searchedDrivers,
+                          buses: searchedBuses,
+                          routes: searchedRoutes,
+                          passes: searchedPasses,
+                          payments: searchedPayments,
+                        ),
+                        icon: const Icon(Icons.grid_on_rounded, size: 14, color: AppColors.success),
+                        label: const Text('CSV', style: TextStyle(color: AppColors.success, fontSize: 12, fontWeight: FontWeight.bold)),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          side: const BorderSide(color: AppColors.success),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      ElevatedButton.icon(
+                        onPressed: () => _handleExportAction(
+                          isPdf: true,
+                          dateRangeStr: _getDateFilterDescription(range),
+                          users: searchedUsers,
+                          drivers: searchedDrivers,
+                          buses: searchedBuses,
+                          routes: searchedRoutes,
+                          passes: searchedPasses,
+                          payments: searchedPayments,
+                        ),
+                        icon: const Icon(Icons.picture_as_pdf_rounded, size: 14, color: Colors.white),
+                        label: const Text('PDF', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          backgroundColor: AppColors.primaryCrimson,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              )
+            else
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Image.asset('assets/images/bus_logo.png', width: 24, height: 24, fit: BoxFit.contain),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Reports & Analytics',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Live Firestore metrics, directory audits, dynamic charts, and exports.',
+                          style: TextStyle(fontSize: 12.5, color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton.filledTonal(
+                        tooltip: 'Refresh Analytics',
+                        onPressed: _isRefreshing ? null : _handleRefresh,
+                        icon: _isRefreshing
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryCrimson),
+                              )
+                            : const Icon(Icons.refresh_rounded, size: 20, color: AppColors.primaryCrimson),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: () => _handleExportAction(
+                          isPdf: false,
+                          dateRangeStr: _getDateFilterDescription(range),
+                          users: searchedUsers,
+                          drivers: searchedDrivers,
+                          buses: searchedBuses,
+                          routes: searchedRoutes,
+                          passes: searchedPasses,
+                          payments: searchedPayments,
+                        ),
+                        icon: const Icon(Icons.grid_on_rounded, size: 14, color: AppColors.success),
+                        label: const Text('CSV', style: TextStyle(color: AppColors.success, fontSize: 12, fontWeight: FontWeight.bold)),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          side: const BorderSide(color: AppColors.success),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      ElevatedButton.icon(
+                        onPressed: () => _handleExportAction(
+                          isPdf: true,
+                          dateRangeStr: _getDateFilterDescription(range),
+                          users: searchedUsers,
+                          drivers: searchedDrivers,
+                          buses: searchedBuses,
+                          routes: searchedRoutes,
+                          passes: searchedPasses,
+                          payments: searchedPayments,
+                        ),
+                        icon: const Icon(Icons.picture_as_pdf_rounded, size: 14, color: Colors.white),
+                        label: const Text('PDF', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          backgroundColor: AppColors.primaryCrimson,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ),
+              const SizedBox(height: 16),
+
+              // ── 2. FILTERS AND SEARCH SECTION ──
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.02),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Active Filter Summary Badge
+                    Row(
+                      children: [
+                        const Icon(Icons.tune_rounded, color: AppColors.primaryCrimson, size: 16),
+                        const SizedBox(width: 6),
+                        const Text(
+                          'Active Range: ',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: Color(0xFF64748B)),
+                        ),
+                        Expanded(
+                          child: Text(
+                            _getDateFilterDescription(range),
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: AppColors.primaryCrimson),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (_dateFilter == 'Custom Date Range')
+                          TextButton(
+                            onPressed: _selectCustomDateRange,
+                            style: TextButton.styleFrom(
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              padding: EdgeInsets.zero,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            child: const Text('Change Dates', style: TextStyle(fontSize: 12, color: AppColors.primaryCrimson)),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Date Filters
+                    AdminFilterChips(
+                      filters: const ['All Time', 'Today', 'This Week', 'This Month', 'This Year', 'Custom Date Range'],
+                      selected: _dateFilter,
+                      onSelected: (val) async {
+                        if (val == 'Custom Date Range') {
+                          await _selectCustomDateRange();
+                        } else {
+                          setState(() => _dateFilter = val);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Secondary Filters: Role & Status
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        children: [
+                          const Text('Role: ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                          ...['All Roles', 'Student', 'Driver', 'Admin'].map((r) {
+                            final sel = _roleFilter == r;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: ChoiceChip(
+                                label: Text(r),
+                                selected: sel,
+                                onSelected: (_) => setState(() => _roleFilter = r),
+                                selectedColor: AppColors.primaryCrimson.withOpacity(0.12),
+                                labelStyle: TextStyle(
+                                  color: sel ? AppColors.primaryCrimson : theme.colorScheme.onSurfaceVariant,
+                                  fontSize: 11.5,
+                                  fontWeight: sel ? FontWeight.bold : FontWeight.normal,
+                                ),
+                                side: BorderSide(
+                                  color: sel ? AppColors.primaryCrimson : theme.colorScheme.outlineVariant,
+                                ),
+                                backgroundColor: theme.colorScheme.surface,
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            );
+                          }),
+                          const SizedBox(width: 8),
+                          const Text('Status: ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                          ...['All Statuses', 'Active', 'Inactive'].map((st) {
+                            final sel = _statusFilter == st;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: ChoiceChip(
+                                label: Text(st),
+                                selected: sel,
+                                onSelected: (_) => setState(() => _statusFilter = st),
+                                selectedColor: AppColors.primaryCrimson.withOpacity(0.12),
+                                labelStyle: TextStyle(
+                                  color: sel ? AppColors.primaryCrimson : theme.colorScheme.onSurfaceVariant,
+                                  fontSize: 11.5,
+                                  fontWeight: sel ? FontWeight.bold : FontWeight.normal,
+                                ),
+                                side: BorderSide(
+                                  color: sel ? AppColors.primaryCrimson : theme.colorScheme.outlineVariant,
+                                ),
+                                backgroundColor: theme.colorScheme.surface,
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Search input
+                    AdminSearchBar(
+                      hintText: 'Search users, drivers, buses, routes...',
+                      value: _searchQuery,
+                      onChanged: (q) => setState(() => _searchQuery = q),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // ── 3. REAL-TIME STATS OVERVIEW SECTION (STEP 3) ──
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const AdminSectionHeader(title: 'Live Operational KPIs'),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.success.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.circle, size: 7, color: AppColors.success),
+                        SizedBox(width: 4),
+                        Text('Synced Live', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: AppColors.success)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              // Responsive KPI Grid - aspect ratio 1.15 to prevent vertical RenderFlex overflow on Realme 15
+              GridView(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: isDesktop ? 4 : (isTablet ? 3 : 2),
+                  crossAxisSpacing: 14,
+                  mainAxisSpacing: 14,
+                  childAspectRatio: isDesktop ? 1.45 : (isTablet ? 1.3 : 1.15),
+                ),
+                children: [
+                  AdminStatCard(
+                    label: 'Total Users',
+                    value: usersAsync.isLoading ? '...' : totalUsersCount.toString(),
+                    icon: Icons.people_alt_rounded,
+                    color: AppColors.info,
+                    isLoading: usersAsync.isLoading,
+                  ),
+                  AdminStatCard(
+                    label: 'Active Users',
+                    value: usersAsync.isLoading ? '...' : activeUsersCount.toString(),
+                    icon: Icons.how_to_reg_rounded,
+                    color: AppColors.success,
+                    isLoading: usersAsync.isLoading,
+                  ),
+                  AdminStatCard(
+                    label: 'Students Enrolled',
+                    value: usersAsync.isLoading ? '...' : totalStudentsCount.toString(),
+                    icon: Icons.school_rounded,
+                    color: Colors.blueAccent,
+                    isLoading: usersAsync.isLoading,
+                  ),
+                  AdminStatCard(
+                    label: 'Inactive Users',
+                    value: usersAsync.isLoading ? '...' : inactiveUsersCount.toString(),
+                    icon: Icons.person_off_rounded,
+                    color: AppColors.error,
+                    isLoading: usersAsync.isLoading,
+                  ),
+                  AdminStatCard(
+                    label: 'Total Drivers',
+                    value: driversAsync.isLoading ? '...' : totalDriversCount.toString(),
+                    icon: Icons.person_pin_circle_rounded,
+                    color: Colors.blue,
+                    isLoading: driversAsync.isLoading,
+                  ),
+                  AdminStatCard(
+                    label: 'Active Drivers',
+                    value: driversAsync.isLoading ? '...' : activeDriversCount.toString(),
+                    icon: Icons.badge_rounded,
+                    color: Colors.teal,
+                    isLoading: driversAsync.isLoading,
+                  ),
+                  AdminStatCard(
+                    label: 'Assigned Drivers',
+                    value: driversAsync.isLoading ? '...' : '$assignedDriversCount of $totalDriversCount',
+                    icon: Icons.airline_seat_recline_normal_rounded,
+                    color: Colors.indigo,
+                    isLoading: driversAsync.isLoading,
+                  ),
+                  AdminStatCard(
+                    label: 'Total Buses',
+                    value: busesAsync.isLoading ? '...' : totalBusesCount.toString(),
+                    icon: Icons.directions_bus_rounded,
+                    color: Colors.purple,
+                    isLoading: busesAsync.isLoading,
+                  ),
+                  AdminStatCard(
+                    label: 'Active Buses',
+                    value: busesAsync.isLoading ? '...' : activeBusesCount.toString(),
+                    icon: Icons.departure_board_rounded,
+                    color: AppColors.success,
+                    isLoading: busesAsync.isLoading,
+                  ),
+                  AdminStatCard(
+                    label: 'Fleet Capacity',
+                    value: busesAsync.isLoading ? '...' : '$totalFleetCapacity seats',
+                    icon: Icons.event_seat_rounded,
+                    color: AppColors.accentGold,
+                    isLoading: busesAsync.isLoading,
+                  ),
+                  AdminStatCard(
+                    label: 'Assigned Buses',
+                    value: busesAsync.isLoading ? '...' : '$assignedBusesCount of $totalBusesCount',
+                    icon: Icons.link_rounded,
+                    color: Colors.teal,
+                    isLoading: busesAsync.isLoading,
+                  ),
+                  AdminStatCard(
+                    label: 'Total Routes',
+                    value: routesAsync.isLoading ? '...' : totalRoutesCount.toString(),
+                    icon: Icons.route_rounded,
+                    color: Colors.deepOrange,
+                    isLoading: routesAsync.isLoading,
+                  ),
+                  AdminStatCard(
+                    label: 'Active Routes',
+                    value: routesAsync.isLoading ? '...' : activeRoutesCount.toString(),
+                    icon: Icons.check_circle_outline_rounded,
+                    color: Colors.indigo,
+                    isLoading: routesAsync.isLoading,
+                  ),
+                  AdminStatCard(
+                    label: 'Avg Route Length',
+                    value: routesAsync.isLoading ? '...' : '${avgRouteKm.toStringAsFixed(1)} KM',
+                    icon: Icons.straighten_rounded,
+                    color: Colors.blueGrey,
+                    isLoading: routesAsync.isLoading,
+                  ),
+                  if (realPassesCount > 0)
+                    AdminStatCard(
+                      label: 'Active Passes',
+                      value: '$realActivePassesCount of $realPassesCount',
+                      icon: Icons.badge_outlined,
+                      color: AppColors.success,
+                    ),
+                  if (realRevenue > 0)
+                    AdminStatCard(
+                      label: 'Total Revenue',
+                      value: '₹${realRevenue.toStringAsFixed(0)}',
+                      icon: Icons.currency_rupee_rounded,
+                      color: Colors.teal,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 28),
+
+              // ── 4. VISUAL CHARTS SECTION (STEP 8) ──
+              const AdminSectionHeader(title: 'Interactive Visual Analytics'),
+              const SizedBox(height: 12),
+
+              if (isDesktop) ...[
+                // Desktop row 1: Users by Role & User Status
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: DonutChartWidget(
+                        data: usersByRole,
+                        title: 'Users Distribution by Role',
+                        colors: const [AppColors.primaryCrimson, Colors.blue, Colors.teal, AppColors.accentGold],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: DonutChartWidget(
+                        data: usersByStatus,
+                        title: 'User Account Status',
+                        colors: const [AppColors.success, AppColors.error],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // Desktop row 2: Fleet Status & Route Status
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: DonutChartWidget(
+                        data: busesByStatus,
+                        title: 'Bus Fleet Operational Status',
+                        colors: const [AppColors.success, AppColors.warning, AppColors.error],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: DonutChartWidget(
+                        data: driversByStatus,
+                        title: 'Driver Deployment Status',
+                        colors: const [AppColors.info, AppColors.warning, AppColors.error],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: DonutChartWidget(
+                        data: routesByStatus,
+                        title: 'Routes Status',
+                        colors: const [AppColors.success, AppColors.error],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // Desktop row 3: Registration Trend & Top Courses
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: LineAreaChart(
+                        data: userTrendPoints,
+                        title: 'User Registration Timeline (Actual createdAt)',
+                        primaryColor: AppColors.primaryCrimson,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      flex: 2,
+                      child: HorizontalBarChart(
+                        data: topCourses5,
+                        title: 'Top Courses by Enrolled Students',
+                        barColor: Colors.deepOrange,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // Desktop row 4: Top Routes
+                if (topRoutes5.isNotEmpty)
+                  HorizontalBarChart(
+                    data: topRoutes5,
+                    title: 'Top Routes by Distance (KM)',
+                    barColor: Colors.indigo,
+                  ),
+              ] else ...[
+                // Mobile stacked layout:
+                DonutChartWidget(
+                  data: usersByRole,
+                  title: 'Users Distribution by Role',
+                  colors: const [AppColors.primaryCrimson, Colors.blue, Colors.teal, AppColors.accentGold],
+                ),
+                const SizedBox(height: 16),
+                DonutChartWidget(
+                  data: usersByStatus,
+                  title: 'User Account Status',
+                  colors: const [AppColors.success, AppColors.error],
+                ),
+                const SizedBox(height: 16),
+                DonutChartWidget(
+                  data: busesByStatus,
+                  title: 'Bus Fleet Operational Status',
+                  colors: const [AppColors.success, AppColors.warning, AppColors.error],
+                ),
+                const SizedBox(height: 16),
+                DonutChartWidget(
+                  data: driversByStatus,
+                  title: 'Driver Deployment Status',
+                  colors: const [AppColors.info, AppColors.warning, AppColors.error],
+                ),
+                const SizedBox(height: 16),
+                DonutChartWidget(
+                  data: routesByStatus,
+                  title: 'Routes Status',
+                  colors: const [AppColors.success, AppColors.error],
+                ),
+                const SizedBox(height: 16),
+                LineAreaChart(
+                  data: userTrendPoints,
+                  title: 'User Registration Timeline (Actual createdAt)',
+                  primaryColor: AppColors.primaryCrimson,
+                ),
+                const SizedBox(height: 16),
+                if (topCourses5.isNotEmpty) ...[
+                  HorizontalBarChart(
+                    data: topCourses5,
+                    title: 'Top Courses by Enrolled Students',
+                    barColor: Colors.deepOrange,
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (topRoutes5.isNotEmpty) ...[
+                  HorizontalBarChart(
+                    data: topRoutes5,
+                    title: 'Top Routes by Distance (KM)',
+                    barColor: Colors.indigo,
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ],
+              const SizedBox(height: 28),
+
+              // ── 5. REPORTS DIRECTORY EXPLORER TABS (STEPS 4 - 7) ──
+              const AdminSectionHeader(title: 'Entity Directories & Records'),
+              const SizedBox(height: 12),
+
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                child: Row(
+                  children: [
+                    _buildReportTabButton(0, 'Overview KPIs', Icons.dashboard_outlined),
+                    _buildReportTabButton(1, 'Users Directory ($totalUsersCount)', Icons.people_outline_rounded),
+                    _buildReportTabButton(2, 'Drivers Directory ($totalDriversCount)', Icons.person_pin_circle_outlined),
+                    _buildReportTabButton(3, 'Bus Fleet ($totalBusesCount)', Icons.directions_bus_outlined),
+                    _buildReportTabButton(4, 'Routes Directory ($totalRoutesCount)', Icons.route_outlined),
+                    if (rawPasses.isNotEmpty)
+                      _buildReportTabButton(5, 'Passes ($realPassesCount)', Icons.badge_outlined),
+                    if (rawPayments.isNotEmpty)
+                      _buildReportTabButton(6, 'Receipts (${filteredPayments.length})', Icons.receipt_long_outlined),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              // Active Tab Content Container
+              Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.02),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header of active tab
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _getReportTabTitle(),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14.5,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Showing filtered records',
+                          style: TextStyle(fontSize: 11.5, color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Divider(height: 1, color: theme.dividerColor),
+                    const SizedBox(height: 14),
+
+                    // Content switcher
+                    _buildActiveReportView(
+                      usersAsync: usersAsync,
+                      driversAsync: driversAsync,
+                      busesAsync: busesAsync,
+                      routesAsync: routesAsync,
+                      passesAsync: passesAsync,
+                      paymentsAsync: paymentsAsync,
+                      users: searchedUsers,
+                      drivers: searchedDrivers,
+                      buses: searchedBuses,
+                      routes: searchedRoutes,
+                      passes: searchedPasses,
+                      payments: searchedPayments,
+                      totalUsers: totalUsersCount,
+                      activeUsers: activeUsersCount,
+                      inactiveUsers: inactiveUsersCount,
+                      totalDrivers: totalDriversCount,
+                      activeDrivers: activeDriversCount,
+                      totalBuses: totalBusesCount,
+                      activeBuses: activeBusesCount,
+                      totalRoutes: totalRoutesCount,
+                      activeRoutes: activeRoutesCount,
+                      totalCapacity: totalFleetCapacity,
+                      totalKm: totalNetworkKm,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 40),
+            ],
           ),
-        ],
-      ),
-      ),
-    );
+        ),
+      );
   }
 
-  Widget _buildReportTabButton(int index, String title, IconData? icon, [Widget? customIcon]) {
+  Widget _buildReportTabButton(int index, String title, IconData icon) {
+    final theme = Theme.of(context);
     final isSelected = _selectedReportTab == index;
     return Padding(
       padding: const EdgeInsets.only(right: 8.0),
       child: ChoiceChip(
-        label: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            customIcon ?? Icon(
-                    icon,
-                    size: 16,
-                    color: isSelected ? Colors.white : const Color(0xFF475569),
-                  ),
-            const SizedBox(width: 6),
-            Text(title),
-          ],
-        ),
+        avatar: Icon(icon, size: 16, color: isSelected ? Colors.white : AppColors.primaryCrimson),
+        label: Text(title),
         selected: isSelected,
-        onSelected: (_) {
-          setState(() {
-            _selectedReportTab = index;
-          });
-        },
+        onSelected: (_) => setState(() => _selectedReportTab = index),
         selectedColor: AppColors.primaryCrimson,
         labelStyle: TextStyle(
-          color: isSelected ? Colors.white : const Color(0xFF475569),
+          color: isSelected ? Colors.white : theme.colorScheme.onSurfaceVariant,
           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-          fontSize: 13,
+          fontSize: 12.5,
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: theme.colorScheme.surface,
         side: BorderSide(
-          color: isSelected ? AppColors.primaryCrimson : const Color(0xFFE2E8F0),
+          color: isSelected ? AppColors.primaryCrimson : theme.colorScheme.outlineVariant,
         ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
@@ -818,191 +1332,234 @@ class _AdminReportsTabState extends ConsumerState<AdminReportsTab> {
   String _getReportTabTitle() {
     switch (_selectedReportTab) {
       case 0:
-        return 'Registered Students List';
+        return 'System Analytics Summary';
       case 1:
-        return 'System Buses Directory';
+        return 'Registered Users & Students Directory';
       case 2:
-        return 'System Routes Directory';
-      case 3:
-        return 'Student Payments History';
-      case 4:
-        return 'Issued Bus Passes';
-      case 5:
         return 'System Drivers Directory';
+      case 3:
+        return 'Fleet & Buses Directory';
+      case 4:
+        return 'Bus Routes & Network Directory';
+      case 5:
+        return 'Issued Bus Passes';
+      case 6:
+        return 'Payment & Transaction Receipts';
       default:
-        return 'Report Details';
+        return 'Report Directory';
     }
   }
 
-  Widget _buildSelectedReportContent({
-    required AsyncValue studentsAsync,
+  Widget _buildActiveReportView({
+    required AsyncValue usersAsync,
     required AsyncValue driversAsync,
     required AsyncValue busesAsync,
     required AsyncValue routesAsync,
-    required AsyncValue paymentsAsync,
     required AsyncValue passesAsync,
-    required List<Map<String, dynamic>> studentsReport,
-    required List<Map<String, dynamic>> driversReport,
-    required List<Map<String, dynamic>> busesReport,
-    required List<Map<String, dynamic>> routesReport,
-    required List<Map<String, dynamic>> paymentsReport,
-    required List<Map<String, dynamic>> passesReport,
+    required AsyncValue paymentsAsync,
+    required List<Map<String, dynamic>> users,
+    required List<Map<String, dynamic>> drivers,
+    required List<Map<String, dynamic>> buses,
+    required List<Map<String, dynamic>> routes,
+    required List<Map<String, dynamic>> passes,
+    required List<Map<String, dynamic>> payments,
+    required int totalUsers,
+    required int activeUsers,
+    required int inactiveUsers,
+    required int totalDrivers,
+    required int activeDrivers,
+    required int totalBuses,
+    required int activeBuses,
+    required int totalRoutes,
+    required int activeRoutes,
+    required int totalCapacity,
+    required double totalKm,
   }) {
     switch (_selectedReportTab) {
       case 0:
-        if (studentsAsync.hasError) {
-          return const AdminEmptyState(title: 'Error', subtitle: 'Unable to load this report', icon: Icons.error_outline_rounded);
+        // Overview Summary Table
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Consolidated Summary of System Infrastructure',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF475569)),
+            ),
+            const SizedBox(height: 12),
+            _buildScrollableTable(
+              headers: const ['Category', 'Total Records', 'Active Units', 'Status / Utilization', 'Primary Metric'],
+              rows: [
+                ['Users / Students', '$totalUsers', '$activeUsers Active', '${((totalUsers > 0 ? (activeUsers / totalUsers * 100) : 0)).toStringAsFixed(1)}% active rate', '$inactiveUsers Inactive'],
+                ['Drivers', '$totalDrivers', '$activeDrivers Active', '${((totalDrivers > 0 ? (activeDrivers / totalDrivers * 100) : 0)).toStringAsFixed(1)}% operational', '${totalDrivers - activeDrivers} on leave/inactive'],
+                ['Buses Fleet', '$totalBuses', '$activeBuses Active', '${((totalBuses > 0 ? (activeBuses / totalBuses * 100) : 0)).toStringAsFixed(1)}% fleet readiness', '$totalCapacity Total Seats'],
+                ['Routes Network', '$totalRoutes', '$activeRoutes Active', '${((totalRoutes > 0 ? (activeRoutes / totalRoutes * 100) : 0)).toStringAsFixed(1)}% routes active', '${totalKm.toStringAsFixed(1)} Total KM'],
+              ],
+            ),
+          ],
+        );
+
+      case 1:
+        // Users Table
+        if (usersAsync.hasError) {
+          return AdminErrorState(message: 'Failed to load users: ${usersAsync.error}');
         }
-        if (studentsAsync.isLoading && studentsReport.isEmpty) {
+        if (usersAsync.isLoading && users.isEmpty) {
           return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
         }
-        if (studentsReport.isEmpty) {
+        if (users.isEmpty) {
           return const AdminEmptyState(
-            title: 'No student records found',
-            subtitle: 'No student registered or matches your search query in this range.',
+            title: 'No user records match criteria',
+            subtitle: 'Try adjusting your search query, role filter, or date range.',
             icon: Icons.people_alt_rounded,
           );
         }
         return _buildScrollableTable(
-          headers: const ['Full Name', 'Email', 'Course', 'Status', 'Date Joined'],
-          rows: studentsReport.map((s) => [
-            s['fullName'] ?? '-',
-            s['email'] ?? '-',
-            s['course'] ?? '-',
-            (s['isActive'] == false) ? 'Suspended' : 'Active',
-            _formatDate(s['createdAt']),
-          ]).toList(),
+          headers: const ['Full Name', 'Role', 'Email', 'Course', 'Department', 'Status', 'Date Joined'],
+          rows: users.map((u) {
+            final role = u['role']?.toString().toUpperCase() ?? 'STUDENT';
+            final isActive = u['isActive'] != false;
+            return [
+              u['fullName'] ?? '-',
+              role,
+              u['email'] ?? '-',
+              u['course'] ?? '-',
+              u['department'] ?? '-',
+              isActive ? 'Active' : 'Suspended',
+              _formatDate(u['createdAt']),
+            ];
+          }).toList(),
         );
 
-      case 5:
+      case 2:
+        // Drivers Table
         if (driversAsync.hasError) {
-          return const AdminEmptyState(title: 'Error', subtitle: 'Unable to load this report', icon: Icons.error_outline_rounded);
+          return AdminErrorState(message: 'Failed to load drivers: ${driversAsync.error}');
         }
-        if (driversAsync.isLoading && driversReport.isEmpty) {
+        if (driversAsync.isLoading && drivers.isEmpty) {
           return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
         }
-        if (driversReport.isEmpty) {
+        if (drivers.isEmpty) {
           return const AdminEmptyState(
-            title: 'No driver records found',
-            subtitle: 'No drivers added or matches your search query in this range.',
+            title: 'No driver records match criteria',
+            subtitle: 'Try adjusting your search query or filter criteria.',
             icon: Icons.person_pin_circle_rounded,
           );
         }
         return _buildScrollableTable(
-          headers: const ['Driver Name', 'Driver ID', 'Mobile', 'License No', 'Assigned Bus', 'Status'],
-          rows: driversReport.map((d) => [
+          headers: const ['Driver Name', 'Driver ID', 'Mobile', 'License Number', 'Assigned Bus', 'Status'],
+          rows: drivers.map((d) => [
             d['fullName'] ?? '-',
             d['driverId'] ?? '-',
             d['mobile'] ?? '-',
             d['licenseNumber'] ?? '-',
             d['assignedBusNumber'] ?? 'Unassigned',
-            d['status'] ?? '-',
+            d['status'] ?? 'Active',
           ]).toList(),
         );
 
-      case 1:
+      case 3:
+        // Buses Table
         if (busesAsync.hasError) {
-          return const AdminEmptyState(title: 'Error', subtitle: 'Unable to load this report', icon: Icons.error_outline_rounded);
+          return AdminErrorState(message: 'Failed to load buses: ${busesAsync.error}');
         }
-        if (busesAsync.isLoading && busesReport.isEmpty) {
+        if (busesAsync.isLoading && buses.isEmpty) {
           return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
         }
-        if (busesReport.isEmpty) {
+        if (buses.isEmpty) {
           return AdminEmptyState(
-            title: 'No bus records found',
-            subtitle: 'No buses added or matches your search query in this range.',
+            title: 'No bus records match criteria',
+            subtitle: 'Try adjusting your search query or filter criteria.',
             customIcon: Padding(
-              padding: const EdgeInsets.all(22.0),
+              padding: const EdgeInsets.all(20.0),
               child: Image.asset('assets/images/bus_logo.png', width: 36, height: 36),
             ),
           );
         }
         return _buildScrollableTable(
-          headers: const ['Bus Number', 'Driver Name', 'Driver Phone', 'Status', 'Capacity'],
-          rows: busesReport.map((b) => [
-            b['busNo'] ?? '-',
-            b['driverName'] ?? '-',
-            b['driverPhone'] ?? '-',
-            b['status'] ?? '-',
+          headers: const ['Bus Number', 'Bus Name', 'Reg Number', 'Driver Name', 'Capacity', 'Status'],
+          rows: buses.map((b) => [
+            b['busNumber'] ?? b['busNo'] ?? '-',
+            b['busName'] ?? '-',
+            b['registrationNumber'] ?? '-',
+            b['driverName'] ?? 'Unassigned',
             b['capacity']?.toString() ?? '-',
-          ]).toList(),
-        );
-
-      case 2:
-        if (routesAsync.hasError) {
-          return const AdminEmptyState(title: 'Error', subtitle: 'Unable to load this report', icon: Icons.error_outline_rounded);
-        }
-        if (routesAsync.isLoading && routesReport.isEmpty) {
-          return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
-        }
-        if (routesReport.isEmpty) {
-          return const AdminEmptyState(
-            title: 'No route records found',
-            subtitle: 'No routes defined or matches your search query in this range.',
-            icon: Icons.route_rounded,
-          );
-        }
-        return _buildScrollableTable(
-          headers: const ['Route Name', 'Start Location', 'End Location', 'Stops Count', 'Status'],
-          rows: routesReport.map((r) => [
-            r['routeName'] ?? '-',
-            r['startLocation'] ?? '-',
-            r['endLocation'] ?? '-',
-            (r['stops'] as List?)?.length.toString() ?? '0',
-            r['status'] ?? '-',
-          ]).toList(),
-        );
-
-      case 3:
-        if (paymentsAsync.hasError) {
-          return const AdminEmptyState(title: 'Error', subtitle: 'Unable to load this report', icon: Icons.error_outline_rounded);
-        }
-        if (paymentsAsync.isLoading && paymentsReport.isEmpty) {
-          return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
-        }
-        if (paymentsReport.isEmpty) {
-          return const AdminEmptyState(
-            title: 'No payment records found',
-            subtitle: 'No receipts paid or matches your search query in this range.',
-            icon: Icons.receipt_long_rounded,
-          );
-        }
-        return _buildScrollableTable(
-          headers: const ['Receipt ID', 'Student Name', 'PRN', 'Amount', 'Payment Method', 'Date', 'Status'],
-          rows: paymentsReport.map((p) => [
-            p['receiptId'] ?? '-',
-            p['studentName'] ?? '-',
-            p['prn'] ?? '-',
-            '₹${p['amount'] ?? 0}',
-            p['paymentMethod'] ?? '-',
-            _formatDate(p['paymentDate'] ?? p['createdAt']),
-            p['paymentStatus'] ?? '-',
+            b['status'] ?? 'Active',
           ]).toList(),
         );
 
       case 4:
-        if (passesAsync.hasError) {
-          return const AdminEmptyState(title: 'Error', subtitle: 'Unable to load this report', icon: Icons.error_outline_rounded);
+        // Routes Table
+        if (routesAsync.hasError) {
+          return AdminErrorState(message: 'Failed to load routes: ${routesAsync.error}');
         }
-        if (passesAsync.isLoading && passesReport.isEmpty) {
+        if (routesAsync.isLoading && routes.isEmpty) {
           return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
         }
-        if (passesReport.isEmpty) {
+        if (routes.isEmpty) {
+          return const AdminEmptyState(
+            title: 'No route records match criteria',
+            subtitle: 'Try adjusting your search query or filter criteria.',
+            icon: Icons.route_rounded,
+          );
+        }
+        return _buildScrollableTable(
+          headers: const ['Route Name', 'Route Number', 'Origin / Source', 'Destination', 'Stops', 'Distance (KM)', 'Status'],
+          rows: routes.map((r) {
+            final stops = r['stops'];
+            final stopsCount = stops is List ? stops.length : 0;
+            final dist = r['distanceKm'] ?? r['distance'];
+            final distStr = dist != null ? '$dist KM' : '-';
+            return [
+              r['routeName'] ?? r['name'] ?? '-',
+              r['routeNumber'] ?? r['number'] ?? '-',
+              r['origin'] ?? r['source'] ?? r['startLocation'] ?? '-',
+              r['destination'] ?? r['dest'] ?? r['endLocation'] ?? '-',
+              '$stopsCount stops',
+              distStr,
+              r['status'] ?? 'Active',
+            ];
+          }).toList(),
+        );
+
+      case 5:
+        // Passes Table
+        if (passes.isEmpty) {
           return const AdminEmptyState(
             title: 'No pass records found',
-            subtitle: 'No passes issued or matches your search query in this range.',
+            subtitle: 'No bus passes have been issued yet in the database.',
             icon: Icons.badge_rounded,
           );
         }
         return _buildScrollableTable(
-          headers: const ['Pass ID', 'Student Name', 'PRN', 'Route Assigned', 'Expiry Date', 'Status'],
-          rows: passesReport.map((ps) => [
-            ps['passId'] ?? 'N/A',
-            ps['studentName'] ?? ps['fullName'] ?? 'Unknown',
-            ps['prn'] ?? 'N/A',
-            ps['route'] ?? ps['routeName'] ?? 'N/A',
+          headers: const ['Pass ID', 'Student Name', 'PRN', 'Route', 'Expiry Date', 'Status'],
+          rows: passes.map((ps) => [
+            ps['passId'] ?? ps['id'] ?? '-',
+            ps['studentName'] ?? ps['fullName'] ?? 'Student',
+            ps['prn'] ?? '-',
+            ps['route'] ?? ps['routeName'] ?? '-',
             _formatDate(ps['expiryDate']),
-            ps['passStatus'] ?? 'N/A',
+            ps['passStatus'] ?? 'Active',
+          ]).toList(),
+        );
+
+      case 6:
+        // Payments Table
+        if (payments.isEmpty) {
+          return const AdminEmptyState(
+            title: 'No payment records found',
+            subtitle: 'No payment receipts recorded yet in the database.',
+            icon: Icons.receipt_long_rounded,
+          );
+        }
+        return _buildScrollableTable(
+          headers: const ['Receipt ID', 'Student Name', 'Amount', 'Payment Method', 'Date', 'Status'],
+          rows: payments.map((p) => [
+            p['receiptId'] ?? p['id'] ?? '-',
+            p['studentName'] ?? '-',
+            '₹${p['amount'] ?? 0}',
+            p['paymentMethod'] ?? 'Online',
+            _formatDate(p['paymentDate'] ?? p['createdAt']),
+            p['paymentStatus'] ?? 'Paid',
           ]).toList(),
         );
 
@@ -1015,22 +1572,23 @@ class _AdminReportsTabState extends ConsumerState<AdminReportsTab> {
     required List<String> headers,
     required List<List<dynamic>> rows,
   }) {
+    final theme = Theme.of(context);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       physics: const BouncingScrollPhysics(),
       child: DataTable(
-        headingRowColor: MaterialStateProperty.all(const Color(0xFFF8FAFC)),
-        dataRowColor: MaterialStateProperty.all(Colors.white),
-        columnSpacing: 24.0,
-        horizontalMargin: 8,
-        headingRowHeight: 44,
-        dataRowHeight: 48,
-        border: TableBorder.symmetric(inside: const BorderSide(color: Color(0xFFF1F5F9), width: 1)),
+        headingRowColor: WidgetStateProperty.all(theme.colorScheme.surfaceContainerHighest.withOpacity(0.5)),
+        dataRowColor: WidgetStateProperty.all(theme.colorScheme.surface),
+        columnSpacing: 22.0,
+        horizontalMargin: 10,
+        headingRowHeight: 42,
+        dataRowHeight: 46,
+        border: TableBorder.symmetric(inside: BorderSide(color: theme.dividerColor, width: 0.8)),
         columns: headers.map((header) {
           return DataColumn(
             label: Text(
               header,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF475569)),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: theme.colorScheme.onSurfaceVariant),
             ),
           );
         }).toList(),
@@ -1040,7 +1598,7 @@ class _AdminReportsTabState extends ConsumerState<AdminReportsTab> {
               return DataCell(
                 Text(
                   cell?.toString() ?? '',
-                  style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
+                  style: TextStyle(fontSize: 12.5, color: theme.colorScheme.onSurface),
                 ),
               );
             }).toList(),
@@ -1050,175 +1608,123 @@ class _AdminReportsTabState extends ConsumerState<AdminReportsTab> {
     );
   }
 
-  /// Initiates document exporting (PDF or CSV) based on user selections
-  Future<void> _handleExport({required bool isPdf, required String dateRangeStr}) async {
-    // Determine target lists and metadata
+  /// Exports report according to the active tab and filters
+  Future<void> _handleExportAction({
+    required bool isPdf,
+    required String dateRangeStr,
+    required List<Map<String, dynamic>> users,
+    required List<Map<String, dynamic>> drivers,
+    required List<Map<String, dynamic>> buses,
+    required List<Map<String, dynamic>> routes,
+    required List<Map<String, dynamic>> passes,
+    required List<Map<String, dynamic>> payments,
+  }) async {
     String reportTitle = '';
     String filenamePrefix = '';
     List<String> headers = [];
     List<List<dynamic>> rows = [];
 
-    // Watch raw streams manually in context
-    final students = ref.read(studentsListStreamProvider).value ?? [];
-    final drivers = ref.read(driversListStreamProvider).value ?? [];
-    final buses = ref.read(busesListStreamProvider).value ?? [];
-    final routes = ref.read(routesListStreamProvider).value ?? [];
-    final payments = ref.read(paymentsListStreamProvider).value ?? [];
-    final passes = ref.read(busPassesListStreamProvider).value ?? [];
-
-    final range = _getCurrentDateRange();
-    final start = range.start;
-    final end = range.end;
-
-    bool isWithinRange(DateTime? date) {
-      if (date == null) return false;
-      return date.isAfter(start.subtract(const Duration(seconds: 1))) &&
-          date.isBefore(end.add(const Duration(seconds: 1)));
-    }
-
-    final search = _searchQuery.trim().toLowerCase();
-
     switch (_selectedReportTab) {
       case 0:
-        reportTitle = 'Registered Students Report';
-        filenamePrefix = 'students_report';
-        headers = const ['Full Name', 'PRN', 'Email', 'Course', 'Status', 'Date Joined'];
-        
-        var list = students.where((s) => isWithinRange(_getDocDate(s, 'createdAt'))).toList();
-        if (search.isNotEmpty) {
-          list = list.where((s) {
-            final name = (s['fullName'] ?? '').toString().toLowerCase();
-            final prn = (s['prn'] ?? '').toString().toLowerCase();
-            return name.contains(search) || prn.contains(search);
-          }).toList();
-        }
-        
-        rows = list.map((s) => [
-          s['fullName'] ?? '-',
-          s['prn'] ?? '-',
-          s['email'] ?? '-',
-          s['course'] ?? '-',
-          (s['isActive'] == false) ? 'Suspended' : 'Active',
-          _formatDate(s['createdAt']),
+        reportTitle = 'ICEM Bus Portal - Executive Analytics Summary';
+        filenamePrefix = 'executive_analytics_summary';
+        headers = const ['Entity Category', 'Total Records', 'Active Units', 'Operational Rate', 'Key Metric'];
+        rows = [
+          ['Users / Students', '${users.length}', '${users.where((u) => u['isActive'] != false).length} Active', '${((users.isNotEmpty ? (users.where((u) => u['isActive'] != false).length / users.length * 100) : 0)).toStringAsFixed(1)}%', '${users.where((u) => u['isActive'] == false).length} Inactive'],
+          ['Drivers', '${drivers.length}', '${drivers.where((d) => (d['status']?.toString().toLowerCase() ?? 'active') == 'active').length} Active', '${((drivers.isNotEmpty ? (drivers.where((d) => (d['status']?.toString().toLowerCase() ?? 'active') == 'active').length / drivers.length * 100) : 0)).toStringAsFixed(1)}%', '${drivers.where((d) => (d['status']?.toString().toLowerCase() ?? '') == 'on leave').length} On Leave'],
+          ['Buses Fleet', '${buses.length}', '${buses.where((b) => (b['status']?.toString().toLowerCase() ?? 'active') == 'active').length} Active', '${((buses.isNotEmpty ? (buses.where((b) => (b['status']?.toString().toLowerCase() ?? 'active') == 'active').length / buses.length * 100) : 0)).toStringAsFixed(1)}%', '${buses.where((b) => (b['status']?.toString().toLowerCase() ?? '') == 'maintenance').length} In Maintenance'],
+          ['Routes Network', '${routes.length}', '${routes.where((r) => (r['status']?.toString().toLowerCase() ?? 'active') == 'active').length} Active', '${((routes.isNotEmpty ? (routes.where((r) => (r['status']?.toString().toLowerCase() ?? 'active') == 'active').length / routes.length * 100) : 0)).toStringAsFixed(1)}%', '${routes.where((r) => r['assignedBusId'] != null).length} Assigned Buses'],
+        ];
+        break;
+
+      case 1:
+        reportTitle = 'ICEM Bus Portal - Users & Students Directory';
+        filenamePrefix = 'users_directory_report';
+        headers = const ['Full Name', 'Role', 'Email', 'Course', 'Department', 'Status', 'Date Joined'];
+        rows = users.map((u) => [
+          u['fullName'] ?? '-',
+          (u['role'] ?? 'Student').toString().toUpperCase(),
+          u['email'] ?? '-',
+          u['course'] ?? '-',
+          u['department'] ?? '-',
+          (u['isActive'] != false) ? 'Active' : 'Suspended',
+          _formatDate(u['createdAt']),
         ]).toList();
         break;
 
-      case 5:
-        reportTitle = 'System Drivers Directory Report';
-        filenamePrefix = 'drivers_report';
-        headers = const ['Driver Name', 'Driver ID', 'Mobile', 'License No', 'Assigned Bus', 'Status'];
-        
-        var list = drivers.where((d) => isWithinRange(_getDocDate(d, 'createdAt'))).toList();
-        if (search.isNotEmpty) {
-          list = list.where((d) {
-            final name = (d['fullName'] ?? '').toString().toLowerCase();
-            final driverId = (d['driverId'] ?? '').toString().toLowerCase();
-            return name.contains(search) || driverId.contains(search);
-          }).toList();
-        }
-
-        rows = list.map((d) => [
+      case 2:
+        reportTitle = 'ICEM Bus Portal - Drivers Directory Report';
+        filenamePrefix = 'drivers_directory_report';
+        headers = const ['Driver Name', 'Driver ID', 'Mobile', 'License Number', 'Assigned Bus', 'Status'];
+        rows = drivers.map((d) => [
           d['fullName'] ?? '-',
           d['driverId'] ?? '-',
           d['mobile'] ?? '-',
           d['licenseNumber'] ?? '-',
           d['assignedBusNumber'] ?? 'Unassigned',
-          d['status'] ?? '-',
-        ]).toList();
-        break;
-
-      case 1:
-        reportTitle = 'System Buses Directory Report';
-        filenamePrefix = 'buses_report';
-        headers = const ['Bus Number', 'Driver Name', 'Driver Phone', 'Status', 'Capacity'];
-        
-        var list = buses.where((b) => isWithinRange(_getDocDate(b, 'createdAt'))).toList();
-        if (search.isNotEmpty) {
-          list = list.where((b) {
-            final busNo = (b['busNo'] ?? '').toString().toLowerCase();
-            final driverName = (b['driverName'] ?? '').toString().toLowerCase();
-            return busNo.contains(search) || driverName.contains(search);
-          }).toList();
-        }
-
-        rows = list.map((b) => [
-          b['busNo'] ?? '-',
-          b['driverName'] ?? '-',
-          b['driverPhone'] ?? '-',
-          b['status'] ?? '-',
-          b['capacity']?.toString() ?? '-',
-        ]).toList();
-        break;
-
-      case 2:
-        reportTitle = 'System Routes Directory Report';
-        filenamePrefix = 'routes_report';
-        headers = const ['Route Name', 'Start Location', 'End Location', 'Stops Count', 'Status'];
-        
-        var list = routes.where((r) => isWithinRange(_getDocDate(r, 'createdAt'))).toList();
-        if (search.isNotEmpty) {
-          list = list.where((r) {
-            final name = (r['routeName'] ?? '').toString().toLowerCase();
-            final startLoc = (r['startLocation'] ?? '').toString().toLowerCase();
-            return name.contains(search) || startLoc.contains(search);
-          }).toList();
-        }
-
-        rows = list.map((r) => [
-          r['routeName'] ?? '-',
-          r['startLocation'] ?? '-',
-          r['endLocation'] ?? '-',
-          (r['stops'] as List?)?.length.toString() ?? '0',
-          r['status'] ?? '-',
+          d['status'] ?? 'Active',
         ]).toList();
         break;
 
       case 3:
-        reportTitle = 'Student Payments History Report';
-        filenamePrefix = 'payments_report';
-        headers = const ['Receipt ID', 'Student Name', 'PRN', 'Amount', 'Payment Method', 'Date', 'Status'];
-        
-        var list = payments.where((p) => isWithinRange(_getDocDate(p, 'paymentDate') ?? _getDocDate(p, 'createdAt'))).toList();
-        if (search.isNotEmpty) {
-          list = list.where((p) {
-            final id = (p['receiptId'] ?? '').toString().toLowerCase();
-            final name = (p['studentName'] ?? '').toString().toLowerCase();
-            return id.contains(search) || name.contains(search);
-          }).toList();
-        }
-
-        rows = list.map((p) => [
-          p['receiptId'] ?? '-',
-          p['studentName'] ?? '-',
-          p['prn'] ?? '-',
-          '₹${p['amount'] ?? 0}',
-          p['paymentMethod'] ?? '-',
-          _formatDate(p['paymentDate'] ?? p['createdAt']),
-          p['paymentStatus'] ?? '-',
+        reportTitle = 'ICEM Bus Portal - Buses Fleet Report';
+        filenamePrefix = 'buses_fleet_report';
+        headers = const ['Bus Number', 'Bus Name', 'Reg Number', 'Driver Name', 'Capacity', 'Status'];
+        rows = buses.map((b) => [
+          b['busNumber'] ?? b['busNo'] ?? '-',
+          b['busName'] ?? '-',
+          b['registrationNumber'] ?? '-',
+          b['driverName'] ?? 'Unassigned',
+          b['capacity']?.toString() ?? '-',
+          b['status'] ?? 'Active',
         ]).toList();
         break;
 
       case 4:
-        reportTitle = 'Issued Bus Passes Report';
-        filenamePrefix = 'bus_passes_report';
-        headers = const ['Pass ID', 'Student Name', 'PRN', 'Route Assigned', 'Expiry Date', 'Status'];
-        
-        var list = passes.where((ps) => isWithinRange(_getDocDate(ps, 'createdAt') ?? _getDocDate(ps, 'updatedAt'))).toList();
-        if (search.isNotEmpty) {
-          list = list.where((ps) {
-            final passId = (ps['passId'] ?? '').toString().toLowerCase();
-            final name = (ps['studentName'] ?? ps['fullName'] ?? '').toString().toLowerCase();
-            return passId.contains(search) || name.contains(search);
-          }).toList();
-        }
+        reportTitle = 'ICEM Bus Portal - Routes Network Report';
+        filenamePrefix = 'routes_network_report';
+        headers = const ['Route Name', 'Route Number', 'Origin / Source', 'Destination', 'Stops', 'Distance (KM)', 'Status'];
+        rows = routes.map((r) {
+          final stops = r['stops'];
+          final stopsCount = stops is List ? stops.length : 0;
+          final dist = r['distanceKm'] ?? r['distance'];
+          return [
+            r['routeName'] ?? r['name'] ?? '-',
+            r['routeNumber'] ?? r['number'] ?? '-',
+            r['origin'] ?? r['source'] ?? r['startLocation'] ?? '-',
+            r['destination'] ?? r['dest'] ?? r['endLocation'] ?? '-',
+            '$stopsCount stops',
+            dist != null ? '$dist KM' : '-',
+            r['status'] ?? 'Active',
+          ];
+        }).toList();
+        break;
 
-        rows = list.map((ps) => [
-          ps['passId'] ?? 'N/A',
-          ps['studentName'] ?? ps['fullName'] ?? 'Unknown',
-          ps['prn'] ?? 'N/A',
-          ps['route'] ?? ps['routeName'] ?? 'N/A',
+      case 5:
+        reportTitle = 'ICEM Bus Portal - Issued Bus Passes Report';
+        filenamePrefix = 'issued_passes_report';
+        headers = const ['Pass ID', 'Student Name', 'PRN', 'Route', 'Expiry Date', 'Status'];
+        rows = passes.map((ps) => [
+          ps['passId'] ?? ps['id'] ?? '-',
+          ps['studentName'] ?? ps['fullName'] ?? 'Student',
+          ps['prn'] ?? '-',
+          ps['route'] ?? ps['routeName'] ?? '-',
           _formatDate(ps['expiryDate']),
-          ps['passStatus'] ?? 'N/A',
+          ps['passStatus'] ?? 'Active',
+        ]).toList();
+        break;
+
+      case 6:
+        reportTitle = 'ICEM Bus Portal - Payment Receipts Report';
+        filenamePrefix = 'payment_receipts_report';
+        headers = const ['Receipt ID', 'Student Name', 'Amount', 'Payment Method', 'Date', 'Status'];
+        rows = payments.map((p) => [
+          p['receiptId'] ?? p['id'] ?? '-',
+          p['studentName'] ?? '-',
+          '₹${p['amount'] ?? 0}',
+          p['paymentMethod'] ?? 'Online',
+          _formatDate(p['paymentDate'] ?? p['createdAt']),
+          p['paymentStatus'] ?? 'Paid',
         ]).toList();
         break;
     }
@@ -1226,8 +1732,9 @@ class _AdminReportsTabState extends ConsumerState<AdminReportsTab> {
     if (rows.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No records available to export for this report tab and filter.'),
+          content: Text('No records available to export for this view.'),
           backgroundColor: AppColors.warning,
+          behavior: SnackBarBehavior.floating,
         ),
       );
       return;
@@ -1252,12 +1759,13 @@ class _AdminReportsTabState extends ConsumerState<AdminReportsTab> {
           rows: rows,
         );
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Successfully generated and opened share prompt for $reportTitle.'),
+            content: Text('Generated report for $reportTitle successfully.'),
             backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -1267,6 +1775,7 @@ class _AdminReportsTabState extends ConsumerState<AdminReportsTab> {
           SnackBar(
             content: Text('Export failed: $e'),
             backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }

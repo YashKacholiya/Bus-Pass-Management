@@ -1,0 +1,187 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role in ['admin', 'Admin', 'staff', 'Staff'] ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'Admin', 'staff', 'Staff']
+      );
+    }
+
+    // ── USERS COLLECTION ──
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      // Students can update their profile information, but cannot change their own role to Admin/Staff
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        (
+          request.auth.uid == userId &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']) ||
+           request.resource.data.role == resource.data.role)
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ── BUS ROUTES & BUSES ──
+    match /bus_routes/{routeId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /buses/{busId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ── BUS PASS APPLICATIONS ──
+    match /bus_pass_applications/{applicationId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.uid == request.auth.uid ||
+        resource.data.studentId == request.auth.uid
+      );
+
+      // Student can submit an initial application (must be Payment Pending / Pending)
+      // Must NOT contain passNumber, approvedAt, approvedBy, qrCode
+      allow create: if isAuthenticated() && (
+        isAdmin() ||
+        (
+          (request.resource.data.uid == request.auth.uid || request.resource.data.studentId == request.auth.uid) &&
+          request.resource.data.paymentStatus in ['Pending', 'Unpaid', 'pending'] &&
+          request.resource.data.status in ['Payment Pending', 'payment_pending', 'Pending'] &&
+          request.resource.data.passStatus in ['Payment Pending', 'payment_pending', 'Pending'] &&
+          !request.resource.data.keys().hasAny(['approvedAt', 'approvedBy', 'passNumber', 'qrCode', 'validFrom', 'validUntil'])
+        )
+      );
+
+      // Student CANNOT mark application as 'Approved', 'Active', or 'Paid'
+      // Student CANNOT directly generate passNumber or approvedAt/approvedBy
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        (
+          (resource.data.uid == request.auth.uid || resource.data.studentId == request.auth.uid) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'approvedBy', 'approvedAt', 'passNumber', 'passStatus', 'applicationStatus', 'validFrom', 'validUntil', 'qrCode'
+          ]) &&
+          request.resource.data.status != 'Approved' &&
+          request.resource.data.status != 'approved' &&
+          request.resource.data.status != 'Active' &&
+          request.resource.data.paymentStatus != 'paid' &&
+          request.resource.data.paymentStatus != 'Paid'
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // ── BUS PASSES ──
+    match /bus_passes/{userId} {
+      // Conductors and admins can read any pass for QR verification; students can read their own
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+
+      // Only Admin or trusted backend can activate, approve, or generate passNumber
+      allow create: if isAuthenticated() && (
+        isAdmin() ||
+        (
+          isOwner(userId) &&
+          request.resource.data.passStatus in ['Pending', 'Payment Pending', 'pending'] &&
+          request.resource.data.status in ['Pending', 'Payment Pending', 'pending'] &&
+          request.resource.data.paymentStatus in ['Pending', 'Unpaid', 'pending'] &&
+          !request.resource.data.keys().hasAny(['passNumber', 'approvedAt', 'approvedBy', 'qrCode', 'validFrom', 'validUntil'])
+        )
+      );
+
+      // Student cannot modify approval status, pass status, payment status, passNumber, approvedAt, or qrCode
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        (
+          isOwner(userId) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'passStatus', 'applicationStatus', 'status', 'paymentStatus', 'passNumber', 'approvedAt', 'approvedBy', 'qrCode', 'validFrom', 'validUntil'
+          ])
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // ── PAYMENTS COLLECTION ──
+    match /payments/{paymentId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.studentId == request.auth.uid ||
+        resource.data.uid == request.auth.uid
+      );
+
+      // Students can create a payment attempt
+      allow create: if isAuthenticated() && (
+        isAdmin() ||
+        (
+          (request.resource.data.studentId == request.auth.uid || request.resource.data.uid == request.auth.uid) &&
+          request.resource.data.paymentStatus in ['created', 'pending', 'processing', 'submitted_for_verification', 'Pending Verification']
+        )
+      );
+
+      // Students CANNOT mark payments as 'paid' or 'verified'
+      // Only Admin or trusted payment webhook/service can verify payments
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        (
+          (resource.data.studentId == request.auth.uid || resource.data.uid == request.auth.uid) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['verifiedAt', 'verifiedBy']) &&
+          request.resource.data.paymentStatus in ['failed', 'cancelled']
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // ── RECEIPTS COLLECTION ──
+    match /receipts/{receiptId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.uid == request.auth.uid ||
+        resource.data.studentId == request.auth.uid
+      );
+      allow create, update: if isAuthenticated() && (
+        isAdmin() ||
+        request.resource.data.uid == request.auth.uid ||
+        request.resource.data.studentId == request.auth.uid
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ── SYSTEM CONFIGURATION ──
+    match /system_config/{configId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ── NOTIFICATIONS & ALERTS ──
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ── REPORTS & AUDIT LOGS ──
+    match /reports/{reportId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /audit_logs/{logId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

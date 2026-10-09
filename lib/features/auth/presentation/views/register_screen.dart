@@ -1,5 +1,3 @@
-// ignore_for_file: deprecated_member_use
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,8 +5,9 @@ import 'package:icem_bus/config/routes/app_routes.dart';
 import 'package:icem_bus/config/theme/app_colors.dart';
 import 'package:icem_bus/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:icem_bus/features/auth/presentation/controllers/auth_state.dart';
+import 'package:icem_bus/shared/app_card.dart';
+import 'package:icem_bus/shared/app_text_field.dart';
 import 'package:icem_bus/shared/custom_button.dart';
-import 'package:icem_bus/shared/glass_card.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -21,12 +20,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
+  final _mobileController = TextEditingController();
+  final _studentIdController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
   String? _selectedRole;
-  bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
 
   final List<String> _roles = [
     'Engineering Student',
@@ -39,6 +38,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
+    _mobileController.dispose();
+    _studentIdController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -49,7 +50,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       if (_selectedRole == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Please select your college role.'),
+            content: Text('Please select your college role / course.'),
             backgroundColor: AppColors.error,
           ),
         );
@@ -57,11 +58,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       }
       
       ref.read(authControllerProvider.notifier).signUp(
-            fullName: _nameController.text,
-            email: _emailController.text,
+            fullName: _nameController.text.trim(),
+            email: _emailController.text.trim(),
             password: _passwordController.text,
             confirmPassword: _confirmPasswordController.text,
             role: _selectedRole!,
+            mobile: _mobileController.text.trim().isNotEmpty ? _mobileController.text.trim() : null,
+            collegeId: _studentIdController.text.trim().isNotEmpty ? _studentIdController.text.trim() : null,
           );
     }
   }
@@ -69,7 +72,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
-    final theme = Theme.of(context);
 
     // Listen for AuthState mutations (Errors or successful registration redirects)
     ref.listen<AuthState>(authControllerProvider, (previous, next) {
@@ -95,66 +97,105 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     });
 
     return Scaffold(
+      backgroundColor: AppColors.bgDark,
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+          padding: const EdgeInsets.symmetric(horizontal: 22.0, vertical: 16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+
               // App logo / branding
               Container(
-                width: 72,
-                height: 72,
+                width: 76,
+                height: 76,
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: AppColors.primaryCrimson.withOpacity(0.08),
+                  color: AppColors.cardSurface,
                   shape: BoxShape.circle,
-                ),
-                child: const Center(
-                  child: Icon(
-                    Icons.app_registration_rounded,
-                    size: 36,
-                    color: AppColors.primaryCrimson,
+                  border: Border.all(
+                    color: AppColors.primaryCrimson.withValues(alpha: 0.35),
+                    width: 1.5,
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primaryCrimson.withValues(alpha: 0.2),
+                      blurRadius: 20,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Image.asset(
+                  'assets/images/bus_logo.png',
+                  fit: BoxFit.contain,
                 ),
               ),
-              const SizedBox(height: 16),
-              Text(
-                'Register Account',
-                style: theme.textTheme.displayMedium?.copyWith(
+              const SizedBox(height: 18),
+
+              const Text(
+                'Create Account',
+                style: TextStyle(
+                  fontSize: 28,
                   fontWeight: FontWeight.w800,
-                  color: AppColors.primaryCrimson,
+                  color: AppColors.textPrimary,
+                  letterSpacing: -0.4,
                 ),
               ),
-              Text(
+              const SizedBox(height: 6),
+              const Text(
                 'Join the ICEM Smart Bus Pass portal',
-                style: theme.textTheme.bodyMedium?.copyWith(
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
                   color: AppColors.textSecondary,
                 ),
+                textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 30),
+              const SizedBox(height: 26),
 
-              // Inputs wrapped in GlassCard
+              // Inputs wrapped in PremiumCard
               Form(
                 key: _formKey,
-                child: GlassCard(
-                  blur: 16,
-                  borderColor: AppColors.primaryCrimson,
-                  opacity: 0.05,
-                  padding: const EdgeInsets.all(24.0),
+                child: PremiumCard(
+                  padding: const EdgeInsets.all(22.0),
+                  borderRadius: 24,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Section: Personal Details
+                      Row(
+                        children: [
+                          Container(
+                            width: 4,
+                            height: 16,
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryCrimson,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Personal Information',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
                       // Full Name
-                      TextFormField(
+                      AppTextField(
                         controller: _nameController,
+                        label: 'Full Name',
+                        hintText: 'e.g. Yash Kacholiya',
                         keyboardType: TextInputType.name,
-                        decoration: InputDecoration(
-                          labelText: 'Full Name',
-                          prefixIcon: const Icon(Icons.person_outline_rounded),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
+                        prefixIcon: Icons.person_outline_rounded,
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
                             return 'Full name is required.';
@@ -165,59 +206,153 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       const SizedBox(height: 16),
 
                       // Email
-                      TextFormField(
+                      AppTextField(
                         controller: _emailController,
+                        label: 'College Email Address',
+                        hintText: 'student@indiraicem.ac.in',
                         keyboardType: TextInputType.emailAddress,
-                        decoration: InputDecoration(
-                          labelText: 'College Email Address',
-                          prefixIcon: const Icon(Icons.email_outlined),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
+                        prefixIcon: Icons.email_outlined,
                         validator: (value) {
                           return ref.read(authControllerProvider.notifier).validateEmail(value ?? '');
                         },
                       ),
                       const SizedBox(height: 16),
 
-                      // Role Selection Dropdown
-                      DropdownButtonFormField<String>(
-                        value: _selectedRole,
-                        decoration: InputDecoration(
-                          labelText: 'College Designation / Role',
-                          prefixIcon: const Icon(Icons.badge_outlined),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        items: _roles.map((String role) {
-                          return DropdownMenuItem<String>(
-                            value: role,
-                            child: Text(role),
-                          );
-                        }).toList(),
-                        onChanged: (value) => setState(() => _selectedRole = value),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please select your role.';
-                          }
-                          return null;
-                        },
+                      // Mobile Number
+                      AppTextField(
+                        controller: _mobileController,
+                        label: 'Mobile Number',
+                        hintText: '+91 98765 43210',
+                        keyboardType: TextInputType.phone,
+                        prefixIcon: Icons.phone_outlined,
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Section: Academic Details
+                      Row(
+                        children: [
+                          Container(
+                            width: 4,
+                            height: 16,
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryCrimson,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Academic Details',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Course / Role Dropdown
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Course / Role',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<String>(
+                            initialValue: _selectedRole,
+                            dropdownColor: AppColors.cardSurface,
+                            borderRadius: BorderRadius.circular(16),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.textPrimary,
+                            ),
+                            decoration: InputDecoration(
+                              filled: true,
+                              fillColor: AppColors.surfaceElevated,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              prefixIcon: const Icon(Icons.badge_outlined, color: AppColors.textMuted, size: 20),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: const BorderSide(color: AppColors.borderSubtle),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: const BorderSide(color: AppColors.borderSubtle),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: const BorderSide(color: AppColors.primaryCrimson, width: 1.5),
+                              ),
+                            ),
+                            hint: const Text('Select course / role', style: TextStyle(color: AppColors.textMuted, fontSize: 14)),
+                            items: _roles.map((String role) {
+                              return DropdownMenuItem<String>(
+                                value: role,
+                                child: Text(role),
+                              );
+                            }).toList(),
+                            onChanged: (value) => setState(() => _selectedRole = value),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please select your role / course.';
+                              }
+                              return null;
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Student ID / PRN
+                      AppTextField(
+                        controller: _studentIdController,
+                        label: 'Student ID / PRN (Optional)',
+                        hintText: 'e.g. ICEM2026CS001',
+                        prefixIcon: Icons.pin_outlined,
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Section: Security
+                      Row(
+                        children: [
+                          Container(
+                            width: 4,
+                            height: 16,
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryCrimson,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Account Security',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 16),
 
                       // Password
-                      TextFormField(
+                      AppTextField(
                         controller: _passwordController,
-                        obscureText: _obscurePassword,
-                        decoration: InputDecoration(
-                          labelText: 'Password',
-                          prefixIcon: const Icon(Icons.lock_outline_rounded),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                            ),
-                            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                          ),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
+                        label: 'Password',
+                        hintText: 'At least 6 characters',
+                        isPassword: true,
+                        prefixIcon: Icons.lock_outline_rounded,
                         validator: (value) {
                           return ref.read(authControllerProvider.notifier).validatePassword(value ?? '');
                         },
@@ -225,20 +360,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       const SizedBox(height: 16),
 
                       // Confirm Password
-                      TextFormField(
+                      AppTextField(
                         controller: _confirmPasswordController,
-                        obscureText: _obscureConfirmPassword,
-                        decoration: InputDecoration(
-                          labelText: 'Confirm Password',
-                          prefixIcon: const Icon(Icons.lock_outline_rounded),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscureConfirmPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                            ),
-                            onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
-                          ),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
+                        label: 'Confirm Password',
+                        hintText: 'Re-enter your password',
+                        isPassword: true,
+                        prefixIcon: Icons.lock_outline_rounded,
                         validator: (value) {
                           if (value != _passwordController.text) {
                             return 'Passwords do not match.';
@@ -246,11 +373,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           return null;
                         },
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 26),
 
                       // Register Button
                       PrimaryButton(
-                        text: 'Register',
+                        text: 'CREATE ACCOUNT',
+                        icon: Icons.person_add_rounded,
                         isLoading: authState.isLoading,
                         onPressed: _onRegisterPressed,
                       ),
@@ -258,20 +386,28 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
 
               // OR Divider
               Row(
                 children: [
-                  Expanded(child: Divider(color: Colors.grey.shade300)),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: Text('OR', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                  const Expanded(child: Divider(color: AppColors.borderSubtle, thickness: 1)),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Text(
+                      'OR',
+                      style: TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
                   ),
-                  Expanded(child: Divider(color: Colors.grey.shade300)),
+                  const Expanded(child: Divider(color: AppColors.borderSubtle, thickness: 1)),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
 
               // Google Sign-Up Button
               SecondaryButton(
@@ -286,20 +422,27 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text('Already have an account? ', style: TextStyle(color: AppColors.textSecondary)),
+                  const Text(
+                    'Already have an account? ',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 14,
+                    ),
+                  ),
                   GestureDetector(
                     onTap: () => context.go(AppRoutes.login),
                     child: const Text(
                       'Sign In',
                       style: TextStyle(
                         color: AppColors.primaryCrimson,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
             ],
           ),
         ),

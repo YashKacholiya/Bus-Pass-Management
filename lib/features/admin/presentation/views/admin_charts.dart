@@ -36,16 +36,27 @@ class _LineAreaChartState extends State<LineAreaChart> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.data.isEmpty) {
+    final theme = Theme.of(context);
+    if (widget.data.length < 2) {
       return Container(
         height: 220,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFF1F5F9)),
+          border: Border.all(color: theme.colorScheme.outlineVariant),
         ),
-        child: const Center(
-          child: Text('No data available', style: TextStyle(color: Color(0xFF64748B))),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.show_chart_rounded, size: 36, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+              const SizedBox(height: 10),
+              Text(
+                widget.data.isEmpty ? 'No data available' : 'Insufficient trend data (requires multiple time points)',
+                style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -58,7 +69,7 @@ class _LineAreaChartState extends State<LineAreaChart> {
         border: Border.all(color: const Color(0xFFF1F5F9)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.01),
+            color: Colors.black.withValues(alpha: 0.01),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -175,8 +186,9 @@ class _LineChartPainter extends CustomPainter {
 
     // Coordinates of data points
     final points = <Offset>[];
+    final denom = data.length > 1 ? (data.length - 1) : 1;
     for (int i = 0; i < data.length; i++) {
-      final x = paddingLeft + (i / (data.length - 1)) * chartWidth;
+      final x = paddingLeft + (i / denom) * chartWidth;
       final y = paddingTop + chartHeight * (1 - (data[i].value / range));
       points.add(Offset(x, y));
     }
@@ -199,8 +211,8 @@ class _LineChartPainter extends CustomPainter {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            primaryColor.withOpacity(0.3),
-            primaryColor.withOpacity(0.0),
+            primaryColor.withValues(alpha: 0.3),
+            primaryColor.withValues(alpha: 0.0),
           ],
         ).createShader(Rect.fromLTRB(paddingLeft, paddingTop, size.width - paddingRight, paddingTop + chartHeight));
 
@@ -242,7 +254,7 @@ class _LineChartPainter extends CustomPainter {
 
       // Vertical indicator line
       final indicatorPaint = Paint()
-        ..color = primaryColor.withOpacity(0.4)
+        ..color = primaryColor.withValues(alpha: 0.4)
         ..strokeWidth = 1.0
         ..style = PaintingStyle.stroke;
       canvas.drawLine(
@@ -324,18 +336,26 @@ class DonutChartWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final total = data.values.fold(0.0, (sum, val) => sum + val);
 
     if (total == 0) {
       return Container(
         height: 220,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFF1F5F9)),
+          border: Border.all(color: theme.colorScheme.outlineVariant),
         ),
-        child: const Center(
-          child: Text('No data available', style: TextStyle(color: Color(0xFF64748B))),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.pie_chart_outline_rounded, size: 36, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+              const SizedBox(height: 10),
+              Text('No sufficient data available', style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13)),
+            ],
+          ),
         ),
       );
     }
@@ -343,12 +363,12 @@ class DonutChartWidget extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFF1F5F9)),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.01),
+            color: Colors.black.withValues(alpha: 0.01),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -359,10 +379,10 @@ class DonutChartWidget extends StatelessWidget {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF0F172A),
+              color: theme.colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 20),
@@ -514,18 +534,26 @@ class HorizontalBarChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final maxVal = data.isEmpty ? 0.0 : data.map((d) => d.value).reduce(math.max);
 
     if (data.isEmpty) {
       return Container(
         height: 220,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFF1F5F9)),
+          border: Border.all(color: theme.colorScheme.outlineVariant),
         ),
-        child: const Center(
-          child: Text('No data available', style: TextStyle(color: Color(0xFF64748B))),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.bar_chart_rounded, size: 36, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+              const SizedBox(height: 10),
+              Text('No sufficient data available', style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13)),
+            ],
+          ),
         ),
       );
     }
@@ -533,12 +561,12 @@ class HorizontalBarChart extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFF1F5F9)),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.01),
+            color: Colors.black.withValues(alpha: 0.01),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -549,10 +577,10 @@ class HorizontalBarChart extends StatelessWidget {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF0F172A),
+              color: theme.colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 20),
@@ -598,7 +626,7 @@ class HorizontalBarChart extends StatelessWidget {
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   colors: [
-                                    barColor.withOpacity(0.8),
+                                    barColor.withValues(alpha: 0.8),
                                     barColor,
                                   ],
                                 ),

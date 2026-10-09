@@ -15,13 +15,26 @@ class DriverRepository {
   Stream<List<Map<String, dynamic>>> getDriversStream() {
     return _firestore
         .collection('drivers')
-        .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) {
-              final data = doc.data();
-              data['id'] = doc.id;
-              return data;
-            }).toList());
+        .map((snapshot) {
+          final list = snapshot.docs.map((doc) {
+            final data = doc.data();
+            data['id'] = doc.id;
+            return data;
+          }).toList();
+          list.sort((a, b) {
+            final aDate = a['createdAt'];
+            final bDate = b['createdAt'];
+            if (aDate == null && bDate == null) return 0;
+            if (aDate == null) return 1;
+            if (bDate == null) return -1;
+            if (aDate is Timestamp && bDate is Timestamp) {
+              return bDate.compareTo(aDate);
+            }
+            return 0;
+          });
+          return list;
+        });
   }
 
   /// Add a new driver to Firestore

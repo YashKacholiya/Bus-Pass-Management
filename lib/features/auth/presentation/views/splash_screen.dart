@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:icem_bus/config/constants/app_constants.dart';
 import 'package:icem_bus/config/routes/app_routes.dart';
 import 'package:icem_bus/config/theme/app_colors.dart';
+import 'package:icem_bus/features/auth/domain/entities/user_entity.dart';
 import 'package:icem_bus/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:icem_bus/services/storage/storage_service.dart';
 
@@ -71,7 +72,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
           String? role;
           if (doc.exists) {
             final data = doc.data();
-            role = data?['role'] as String?;
+            role = UserEntity.normalizeRole(data?['role'] as String?);
           }
 
           // Pre-initialize controller state so the user object is immediately available to downstream dashboard views
@@ -81,7 +82,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
           
           const supportedRoles = {'Admin', 'Staff', 'Engineering Student', 'BCA Student', 'MCA Student'};
 
-          if (role != null && supportedRoles.contains(role)) {
+          if (role != null && role.isNotEmpty && supportedRoles.contains(role)) {
             if (role == 'Admin') {
               context.go(AppRoutes.adminDashboard);
             } else if (role == 'Staff') {
@@ -125,138 +126,181 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              AppColors.primaryCrimson,
-              AppColors.darkCrimson,
-            ],
+      backgroundColor: AppColors.bgDark,
+      body: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Ambient subtle crimson glow centered behind the logo/title
+          Center(
+            child: Container(
+              width: 320,
+              height: 320,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    AppColors.primaryCrimson.withValues(alpha: 0.12),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
           ),
-        ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // Background branding shapes (Subtle premium design)
-            Positioned(
-              top: -100,
-              right: -100,
-              child: Container(
-                width: 300,
-                height: 300,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.04),
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: -150,
-              left: -150,
-              child: Container(
-                width: 400,
-                height: 400,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.03),
-                ),
-              ),
-            ),
-            
-            // Central Logo and Title
-            AnimatedBuilder(
-              animation: _animationController,
-              builder: (context, child) {
-                return FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: ScaleTransition(
-                    scale: _scaleAnimation,
-                    child: child,
-                  ),
-                );
-              },
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Logo Icon Wrapper (Crimson Shield/Bus Monogram mockup)
-                  Container(
-                    width: 110,
-                    height: 110,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(10.0),
-                      child: Image.asset(
-                        'assets/images/bus_logo.png',
-                        width: 90,
-                        height: 90,
-                        fit: BoxFit.contain,
+
+          // Safe Area with responsive centered composition
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                child: AnimatedBuilder(
+                  animation: _animationController,
+                  builder: (context, child) {
+                    return FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: ScaleTransition(
+                        scale: _scaleAnimation,
+                        child: child,
                       ),
-                    ),
+                    );
+                  },
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // 1. [ICEM LOGO] in a premium rounded container
+                      Container(
+                        width: 104,
+                        height: 104,
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: AppColors.cardSurface,
+                          borderRadius: BorderRadius.circular(28),
+                          border: Border.all(
+                            color: AppColors.primaryCrimson.withValues(alpha: 0.35),
+                            width: 1.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primaryCrimson.withValues(alpha: 0.22),
+                              blurRadius: 28,
+                              offset: const Offset(0, 8),
+                            ),
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.5),
+                              blurRadius: 18,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        child: Image.asset(
+                          'assets/images/bus_logo.png',
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+
+                      // 2. [INDIRA COLLEGE OF ENGINEERING & MANAGEMENT] in a premium pill
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryCrimson.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: AppColors.primaryCrimson.withValues(alpha: 0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'INDIRA COLLEGE OF ENGINEERING & MANAGEMENT',
+                            style: TextStyle(
+                              color: AppColors.primaryCrimson,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 10.5,
+                              letterSpacing: 1.0,
+                            ),
+                            maxLines: 1,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+
+                      // 3. [ICEM SMART BUS PASS] primary responsive title
+                      const Text(
+                        'ICEM',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.textPrimary,
+                          letterSpacing: 2.0,
+                          fontFamily: 'Outfit',
+                          height: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'SMART BUS PASS',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.primaryCrimson,
+                            letterSpacing: 1.4,
+                            fontFamily: 'Outfit',
+                            height: 1.1,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // 4. [Secure Campus Mobility] subtitle
+                      Text(
+                        'Secure Campus Mobility',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary.withValues(alpha: 0.9),
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
+                      // 5. [Smart • Secure • Connected] tagline
+                      const Text(
+                        'Smart • Secure • Connected',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textSecondary,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+
+                      // 6. Subtle loading spinner (never overlaps, clean spacing)
+                      const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          color: AppColors.primaryCrimson,
+                          strokeWidth: 2.2,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 24),
-                  // App Branding Titles
-                  Text(
-                    'ICEM SMART BUS',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 2.0,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Pass Management System',
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: Colors.white.withOpacity(0.8),
-                      fontWeight: FontWeight.w300,
-                      letterSpacing: 1.0,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
-            
-            // Bottom Loading Indicator / Footer
-            Positioned(
-              bottom: 60,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      color: AppColors.accentGold,
-                      strokeWidth: 2.5,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Indira College of Engineering & Management',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.white.withOpacity(0.6),
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

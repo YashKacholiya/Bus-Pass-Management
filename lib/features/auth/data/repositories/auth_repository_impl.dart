@@ -29,6 +29,8 @@ class AuthRepositoryImpl implements AuthRepository {
     required String email,
     required String password,
     required String role,
+    String? mobile,
+    String? collegeId,
   }) async {
     try {
       // 1. Create Firebase Auth user
@@ -56,6 +58,8 @@ class AuthRepositoryImpl implements AuthRepository {
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
         isActive: true,
+        mobile: mobile,
+        collegeId: collegeId,
       );
 
       await firestore.collection('users').doc(firebaseUser.uid).set(userModel.toMap());

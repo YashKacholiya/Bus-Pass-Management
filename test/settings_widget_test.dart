@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:icem_bus/features/admin/presentation/views/admin_settings_tab.dart';
 import 'package:icem_bus/features/admin/presentation/views/admin_settings_screen.dart';
+import 'package:icem_bus/features/admin/presentation/views/admin_dashboard.dart';
+import 'package:icem_bus/features/admin/domain/admin_providers.dart';
 import 'package:icem_bus/features/auth/domain/entities/user_entity.dart';
 import 'package:icem_bus/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:icem_bus/features/auth/presentation/controllers/auth_state.dart';
@@ -137,7 +139,8 @@ void main() {
     expect(find.text('Delete Account'), findsOneWidget);
 
     // Scroll back to top to test Edit Profile Dialog trigger
-    await tester.scrollUntilVisible(find.text('Edit Profile Details'), -300);
+    await tester.scrollUntilVisible(find.text('Edit Profile Details'), -100);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Edit Profile Details'));
     await tester.pumpAndSettle();
     expect(find.text('Edit Administrator Profile'), findsOneWidget);
@@ -251,4 +254,131 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
   });
+
+  testWidgets('AdminSettingsTab scrolls smoothly from top to bottom and back on mobile screen size', (WidgetTester tester) async {
+    // Physical size corresponding to Realme 15 (1280x2800 at density 476 / ratio 2.975 -> ~430x941)
+    tester.view.physicalSize = const Size(430, 941);
+    tester.view.devicePixelRatio = 1.0;
+
+    SharedPreferences.setMockInitialValues({});
+    final sharedPreferences = await SharedPreferences.getInstance();
+    final storageService = StorageService(sharedPreferences);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          storageServiceProvider.overrideWithValue(storageService),
+          authControllerProvider.overrideWith(() => FakeAuthController()),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: AdminSettingsTab(),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    expect(find.text('Console Settings'), findsOneWidget);
+
+    // Verify sections reachable in order from top to bottom
+    await tester.scrollUntilVisible(find.text('Admin Profile'), 200);
+    expect(find.text('Admin Profile'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('Appearance'), 200);
+    expect(find.text('Appearance'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('Notification Settings'), 200);
+    expect(find.text('Notification Settings'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('Security'), 200);
+    expect(find.text('Security'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('Session & Login Security'), 200);
+    expect(find.text('Session & Login Security'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('Application Settings'), 200);
+    expect(find.text('Application Settings'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('System Status'), 200);
+    expect(find.text('System Status'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('Admin Data Management'), 200);
+    expect(find.text('Admin Data Management'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('About ICEM'), 200);
+    expect(find.text('About ICEM'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('Help & Support'), 200);
+    expect(find.text('Help & Support'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('Danger Zone'), 200);
+    expect(find.text('Danger Zone'), findsOneWidget);
+    expect(find.text('Sign Out'), findsOneWidget);
+    expect(find.text('Delete Account'), findsOneWidget);
+
+    // Scroll back from BOTTOM to TOP
+    await tester.scrollUntilVisible(find.text('Console Settings'), -200);
+    expect(find.text('Console Settings'), findsOneWidget);
+
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+  });
+
+  testWidgets('AdminDashboardScreen tab 8 renders and scrolls completely on Realme 15 dimensions', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(430, 941);
+    tester.view.devicePixelRatio = 1.0;
+
+    SharedPreferences.setMockInitialValues({});
+    final sharedPreferences = await SharedPreferences.getInstance();
+    final storageService = StorageService(sharedPreferences);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          storageServiceProvider.overrideWithValue(storageService),
+          authControllerProvider.overrideWith(() => FakeAdminDashboardAuthController()),
+          adminTabProvider.overrideWith((ref) => 8),
+        ],
+        child: const MaterialApp(
+          home: AdminDashboardScreen(),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    expect(find.text('Console Settings'), findsOneWidget);
+
+    // Scroll to Danger Zone at the very bottom
+    await tester.scrollUntilVisible(find.text('Danger Zone'), 200);
+    expect(find.text('Danger Zone'), findsOneWidget);
+    expect(find.text('Sign Out'), findsOneWidget);
+    expect(find.text('Delete Account'), findsOneWidget);
+
+    // Scroll back to top
+    await tester.scrollUntilVisible(find.text('Console Settings'), -200);
+    expect(find.text('Console Settings'), findsOneWidget);
+
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+  });
 }
+
+class FakeAdminDashboardAuthController extends AuthController {
+  @override
+  AuthState build() {
+    return AuthState(
+      user: UserEntity(
+        uid: 'admin123',
+        fullName: 'Test Admin',
+        email: 'testadmin@icem.edu',
+        role: 'Admin',
+        isEmailVerified: true,
+        createdAt: DateTime(2026, 1, 15),
+        updatedAt: DateTime(2026, 9, 12),
+      ),
+    );
+  }
+}
+
+

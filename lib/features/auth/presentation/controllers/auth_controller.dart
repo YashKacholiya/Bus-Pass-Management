@@ -33,6 +33,8 @@ class AuthController extends Notifier<AuthState> {
     required String password,
     required String confirmPassword,
     required String role,
+    String? mobile,
+    String? collegeId,
   }) async {
     // 1. Validations
     if (fullName.trim().isEmpty) {
@@ -71,6 +73,8 @@ class AuthController extends Notifier<AuthState> {
         email: email.trim(),
         password: password,
         role: role,
+        mobile: mobile,
+        collegeId: collegeId,
       );
       state = state.copyWith(user: user, isLoading: false, isSuccess: true);
     } on Failure catch (e) {

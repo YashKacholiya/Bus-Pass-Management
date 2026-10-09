@@ -46,76 +46,47 @@ class BusPassRepositoryImpl implements BusPassRepository {
   }
 
   void _triggerQrGenerationIfNeeded(BusPassEntity pass) {
-    final status = pass.status;
-    final paymentStatus = pass.paymentStatus;
-
-    final isPaid = paymentStatus == 'Paid' || paymentStatus == 'Success';
-    final isActive = status == 'Active' || status == 'Approved';
-
-    if (isPaid && isActive) {
-      // Check if QR Code is already generated and matches current pass ID and expiration date
+    if (pass.isActive) {
       if (pass.qrCode != null && pass.qrCode!.isNotEmpty) {
         try {
           final Map<String, dynamic> payload = jsonDecode(pass.qrCode!);
-          if (payload['passId'] == pass.passId &&
-              payload['validUntil'] == pass.expiryDate.toIso8601String() &&
+          if (payload['passNumber'] == pass.effectivePassNumber &&
+              payload['passId'] == pass.passId &&
+              payload['validUntil'] == pass.effectiveValidUntil.toIso8601String() &&
               payload['passStatus'] == pass.status) {
-            // Already generated, up-to-date, do not regenerate
             return;
           }
-        } catch (_) {
-          // JSON parsing failed, let's regenerate
-        }
+        } catch (_) {}
       }
 
-      // Generate QR Code payload in the background
       _generateAndStoreQrCode(pass);
     }
   }
 
   Future<void> _generateAndStoreQrCode(BusPassEntity pass) async {
     try {
-      // 1. Fetch student details from the users collection
-      final studentDoc = await firestore.collection('users').doc(pass.uid).get();
-      final Map<String, dynamic> studentData = studentDoc.data() ?? {};
-      final String studentName = studentData['fullName'] ?? 'Student';
-      final String prn = studentData['prn'] ?? 'N/A';
-
-      // 2. Fetch assigned bus ID from the buses collection
-      String busId = 'Not Assigned';
-      if (pass.routeId.isNotEmpty) {
-        final busesQuery = await firestore
-            .collection('buses')
-            .where('assignedRouteId', isEqualTo: pass.routeId)
-            .limit(1)
-            .get();
-        if (busesQuery.docs.isNotEmpty) {
-          busId = busesQuery.docs.first.id;
-        }
-      }
-
       final validFrom = pass.validFrom ?? DateTime.now();
+      final validUntil = pass.effectiveValidUntil;
 
-      // 3. Build unique payload
+      // Secure payload with unique references (no passwords, secrets or private data)
       final Map<String, dynamic> qrPayloadMap = {
+        'type': 'ICEM_BUS_PASS',
+        'passNumber': pass.effectivePassNumber,
         'passId': pass.passId,
-        'studentUid': pass.uid,
-        'studentName': studentName,
-        'prn': prn,
+        'studentId': pass.uid,
         'routeId': pass.routeId,
-        'busId': busId,
-        'validFrom': validFrom.toIso8601String(),
-        'validUntil': pass.expiryDate.toIso8601String(),
+        'validUntil': validUntil.toIso8601String(),
         'passStatus': pass.status,
       };
 
       final String qrPayload = jsonEncode(qrPayloadMap);
 
-      // 4. Update the bus pass document in Firestore
       await firestore.collection('bus_passes').doc(pass.uid).update({
         'qrCode': qrPayload,
         'validFrom': Timestamp.fromDate(validFrom),
-        'busId': busId,
+        'validUntil': Timestamp.fromDate(validUntil),
+        'expiryDate': Timestamp.fromDate(validUntil),
+        'passNumber': pass.effectivePassNumber,
         'updatedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -150,29 +121,47 @@ class BusPassRepositoryImpl implements BusPassRepository {
         destinationStop: destinationStop,
         fare: fare,
         busNumber: null, // Assigned later by Admin
-        status: 'Pending Payment', // Resets/sets status to pending payment until paid
+        status: 'Payment Pending', // Initial application status must be: Payment Pending
         paymentStatus: 'Pending', // Pending payment
         expiryDate: DateTime.now().add(const Duration(days: 180)),
         qrCode: null,
         validFrom: null,
         busId: null,
         distance: distance,
-        department: department,
+        department: department ?? userData['department'],
       );
 
       final Map<String, dynamic> appData = passModel.toMap();
       appData['applicationId'] = passId;
+      appData['passId'] = passId;
+      appData['uid'] = uid;
+      appData['studentId'] = uid;
       appData['fullName'] = userData['fullName'] ?? 'Student';
       appData['email'] = userData['email'] ?? '';
       appData['prn'] = userData['prn'] ?? '';
+      appData['mobile'] = userData['mobile'] ?? '';
+      appData['collegeId'] = userData['collegeId'] ?? '';
+      appData['department'] = department ?? userData['department'] ?? '';
+      appData['course'] = userData['course'] ?? '';
+      appData['year'] = userData['year'] ?? '';
+      appData['semester'] = userData['semester'] ?? '';
+      appData['status'] = 'Payment Pending';
+      appData['passStatus'] = 'Payment Pending';
+      appData['paymentStatus'] = 'Pending';
+      appData['createdAt'] = FieldValue.serverTimestamp();
+      appData['updatedAt'] = FieldValue.serverTimestamp();
 
       // Save to applications collection
       await firestore.collection('bus_pass_applications').doc(passId).set(appData);
       
-      // We also update or create the bus_passes document so watchBusPass can see the pending status if it's the primary way to check status
-      // Wait, Admin checks applications. But to keep UI working, we might still need to set it in bus_passes or let UI check applications.
-      // We'll write to bus_passes as well to satisfy the existing logic that reads it.
-      await firestore.collection('bus_passes').doc(uid).set(passModel.toMap());
+      // Update/create the bus_passes document (Pass is NOT active, payment is pending)
+      final Map<String, dynamic> passDocData = passModel.toMap();
+      passDocData['status'] = 'Payment Pending';
+      passDocData['passStatus'] = 'Payment Pending';
+      passDocData['paymentStatus'] = 'Pending';
+      passDocData['createdAt'] = FieldValue.serverTimestamp();
+      passDocData['updatedAt'] = FieldValue.serverTimestamp();
+      await firestore.collection('bus_passes').doc(uid).set(passDocData);
 
       return passModel;
     } catch (e) {
@@ -197,7 +186,7 @@ class BusPassRepositoryImpl implements BusPassRepository {
         destinationStop: currentPass.destinationStop,
         fare: currentPass.fare,
         busNumber: currentPass.busNumber,
-        status: 'Pending Payment', // Resets to pending payment
+        status: 'Payment Pending', // Resets to Payment Pending
         paymentStatus: 'Pending',
         expiryDate: DateTime.now().add(const Duration(days: 180)),
         department: currentPass.department,
@@ -225,6 +214,9 @@ class BusPassRepositoryImpl implements BusPassRepository {
         throw const AuthFailure('No pass application found.');
       }
 
+      // CRITICAL SECURITY FIX:
+      // When payment is successful, status becomes 'Pending' (waiting for Admin approval).
+      // It MUST NOT become 'Active' or 'Approved' before Admin approval!
       final updatedModel = BusPassModel(
         uid: currentPass.uid,
         passId: currentPass.passId,
@@ -234,14 +226,14 @@ class BusPassRepositoryImpl implements BusPassRepository {
         destinationStop: currentPass.destinationStop,
         fare: currentPass.fare,
         busNumber: currentPass.busNumber,
-        status: isSuccess ? 'Active' : 'Pending Payment',
+        status: isSuccess ? 'Pending' : 'Payment Pending',
         paymentStatus: isSuccess ? 'Paid' : 'Pending',
         expiryDate: currentPass.expiryDate,
         department: currentPass.department,
         distance: currentPass.distance,
-        qrCode: isSuccess ? currentPass.qrCode : null,
-        validFrom: isSuccess ? currentPass.validFrom : null,
-        busId: isSuccess ? currentPass.busId : null,
+        qrCode: null, // Blocked until Admin approval
+        validFrom: null, // Blocked until Admin approval
+        busId: currentPass.busId,
       );
 
       await firestore.collection('bus_passes').doc(uid).set(updatedModel.toMap());
