@@ -261,8 +261,8 @@ class AdminOverviewTab extends ConsumerWidget {
             : constraints.maxWidth > 600
                 ? 3
                 : 2;
-        // mainAxisExtent avoids overflow from ratio arithmetic on small screens
-        const double cardHeight = 120;
+        // mainAxisExtent generous height prevents bottom pixel overflow across all devices
+        const double cardHeight = 134;
 
         return GridView.builder(
           shrinkWrap: true,
@@ -324,7 +324,7 @@ class AdminOverviewTab extends ConsumerWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final crossAxisCount = constraints.maxWidth > 600 ? 4 : 2;
-        const double cardHeight = 120;
+        const double cardHeight = 128;
 
         return GridView.builder(
           shrinkWrap: true,
@@ -484,31 +484,33 @@ class AdminOverviewTab extends ConsumerWidget {
           side: const BorderSide(color: AppColors.borderSubtle),
         ),
         title: const Text('Reject Application', style: TextStyle(color: AppColors.textPrimary)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Specify reason for rejection:',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: reasonCtrl,
-              decoration: InputDecoration(
-                hintText: 'e.g. Invalid document or fee pending',
-                hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 13),
-                filled: true,
-                fillColor: AppColors.elevatedSurface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppColors.borderSubtle),
-                ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Specify reason for rejection:',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
               ),
-              style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
-              maxLines: 2,
-            ),
-          ],
+              const SizedBox(height: 10),
+              TextField(
+                controller: reasonCtrl,
+                decoration: InputDecoration(
+                  hintText: 'e.g. Invalid document or fee pending',
+                  hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+                  filled: true,
+                  fillColor: AppColors.elevatedSurface,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppColors.borderSubtle),
+                  ),
+                ),
+                style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+                maxLines: 2,
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(

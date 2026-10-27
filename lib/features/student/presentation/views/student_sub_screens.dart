@@ -254,13 +254,29 @@ class _ApplyPassScreenState extends ConsumerState<ApplyPassScreen> {
       return;
     }
 
-    if (!_formKey.currentState!.validate()) {
+    if (_formKey.currentState != null && !_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please complete all required student profile fields.'),
           backgroundColor: AppColors.error,
         ),
       );
+      setState(() => _currentStep = 0);
+      return;
+    }
+
+    // Direct check for required profile fields when Step 1 is unmounted
+    if (_mobileController.text.trim().isEmpty ||
+        (_prnController.text.trim().isEmpty && _collegeIdController.text.trim().isEmpty) ||
+        _departmentController.text.trim().isEmpty ||
+        _courseController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please complete all required student profile fields.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      setState(() => _currentStep = 0);
       return;
     }
 
@@ -271,6 +287,7 @@ class _ApplyPassScreenState extends ConsumerState<ApplyPassScreen> {
           backgroundColor: AppColors.error,
         ),
       );
+      setState(() => _currentStep = 1);
       return;
     }
 

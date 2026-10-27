@@ -915,17 +915,21 @@ class _PaymentDetailsModal extends StatelessWidget {
         statusLower == 'processing';
 
     final theme = Theme.of(context);
+    final maxHeight = MediaQuery.of(context).size.height * 0.85;
 
     return Container(
+      constraints: BoxConstraints(maxHeight: maxHeight),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           // Drag indicator
           Center(
             child: Container(
@@ -1089,6 +1093,7 @@ class _PaymentDetailsModal extends StatelessWidget {
             ],
           ),
         ],
+      ),
       ),
     );
   }

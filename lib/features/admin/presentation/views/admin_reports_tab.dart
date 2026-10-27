@@ -937,7 +937,7 @@ class _AdminReportsTabState extends ConsumerState<AdminReportsTab> {
                   crossAxisCount: isDesktop ? 4 : (isTablet ? 3 : 2),
                   crossAxisSpacing: 14,
                   mainAxisSpacing: 14,
-                  childAspectRatio: isDesktop ? 1.45 : (isTablet ? 1.3 : 1.15),
+                  mainAxisExtent: 134,
                 ),
                 children: [
                   AdminStatCard(

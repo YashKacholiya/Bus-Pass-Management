@@ -495,16 +495,21 @@ class _NotificationDetailsSheet extends StatelessWidget {
 
     final isScheduled = status == 'Scheduled';
 
+    final maxHeight = MediaQuery.of(context).size.height * 0.85;
+
     return Container(
+      constraints: BoxConstraints(maxHeight: maxHeight),
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           // Drag indicator
           Center(
             child: Container(
@@ -626,6 +631,7 @@ class _NotificationDetailsSheet extends StatelessWidget {
             ),
           ],
         ],
+      ),
       ),
     );
   }
