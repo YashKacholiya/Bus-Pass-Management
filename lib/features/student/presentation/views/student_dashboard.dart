@@ -84,6 +84,7 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
   int _emailVerificationCooldown = 0;
   Timer? _cooldownTimer;
   bool _isPhotoLoading = false;
+  bool _hasUnreadNotifications = true;
 
   void _startVerificationCooldown() {
     setState(() => _emailVerificationCooldown = 60);
@@ -116,59 +117,71 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
       _buildProfileTab(context, ref, user),
     ];
 
-    return Scaffold(
-      backgroundColor: AppColors.bgDark,
-      appBar: AppBar(
-        title: Text(
-          _getAppBarTitle(),
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 18,
-            letterSpacing: -0.3,
-            color: AppColors.textPrimary,
-          ),
-        ),
-        elevation: 0,
+    return PopScope(
+      canPop: _currentTabIndex == 0,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _currentTabIndex != 0) {
+          setState(() => _currentTabIndex = 0);
+        }
+      },
+      child: Scaffold(
         backgroundColor: AppColors.bgDark,
-        automaticallyImplyLeading: false,
-        actions: [
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.notifications_outlined, color: AppColors.textSecondary),
-                onPressed: () => setState(() => _currentTabIndex = 3),
-              ),
-              Positioned(
-                top: 12,
-                right: 12,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: AppColors.primaryCrimson,
-                    shape: BoxShape.circle,
-                  ),
+        appBar: AppBar(
+          title: Text(
+            _getAppBarTitle(),
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+              letterSpacing: -0.3,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          elevation: 0,
+          backgroundColor: AppColors.bgDark,
+          automaticallyImplyLeading: false,
+          actions: [
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.notifications_outlined, color: AppColors.textSecondary),
+                  onPressed: () => setState(() {
+                    _currentTabIndex = 3;
+                    _hasUnreadNotifications = false;
+                  }),
                 ),
-              ),
-            ],
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout_rounded, color: AppColors.primaryCrimson),
-            onPressed: () async {
-              final router = GoRouter.of(context);
-              await ref.read(authControllerProvider.notifier).logout();
-              router.go(AppRoutes.login);
-            },
-          ),
-          const SizedBox(width: 4),
-        ],
+                if (_hasUnreadNotifications)
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: AppColors.primaryCrimson,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            IconButton(
+              icon: const Icon(Icons.logout_rounded, color: AppColors.primaryCrimson),
+              onPressed: () async {
+                final router = GoRouter.of(context);
+                await ref.read(authControllerProvider.notifier).logout();
+                router.go(AppRoutes.login);
+              },
+            ),
+            const SizedBox(width: 4),
+          ],
+        ),
+        body: IndexedStack(
+          index: _currentTabIndex,
+          children: tabs,
+        ),
+        bottomNavigationBar: _buildFloatingBottomNavBar(),
       ),
-      body: IndexedStack(
-        index: _currentTabIndex,
-        children: tabs,
-      ),
-      bottomNavigationBar: _buildFloatingBottomNavBar(),
     );
   }
 
@@ -194,7 +207,7 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
           _buildNavItem(0, Icons.home_rounded, Icons.home_outlined, 'Home'),
           _buildNavItem(1, Icons.badge_rounded, Icons.badge_outlined, 'Pass'),
           _buildNavItem(2, Icons.calendar_month_rounded, Icons.calendar_month_outlined, 'Schedule'),
-          _buildNavItem(3, Icons.notifications_rounded, Icons.notifications_outlined, 'Alerts', hasNotificationDot: true),
+          _buildNavItem(3, Icons.notifications_rounded, Icons.notifications_outlined, 'Alerts', hasNotificationDot: _hasUnreadNotifications),
           _buildNavItem(4, Icons.person_rounded, Icons.person_outline_rounded, 'Profile'),
         ],
       ),
@@ -204,7 +217,12 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
   Widget _buildNavItem(int index, IconData activeIcon, IconData inactiveIcon, String label, {bool hasNotificationDot = false}) {
     final isSelected = _currentTabIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _currentTabIndex = index),
+      onTap: () => setState(() {
+        _currentTabIndex = index;
+        if (index == 3) {
+          _hasUnreadNotifications = false;
+        }
+      }),
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
@@ -953,7 +971,10 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
                             subtitle: 'Campus Alerts',
                             icon: Icons.notifications_active_rounded,
                             accentColor: const Color(0xFFA855F7),
-                            onTap: () => setState(() => _currentTabIndex = 3),
+                            onTap: () => setState(() {
+                              _currentTabIndex = 3;
+                              _hasUnreadNotifications = false;
+                            }),
                           ),
                         ),
                         const SizedBox(width: 12),

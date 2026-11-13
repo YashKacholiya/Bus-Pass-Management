@@ -187,6 +187,18 @@ class AdminOverviewTab extends ConsumerWidget {
     final driversList = driversAsync.valueOrNull ?? [];
     final activeDriversCount = driversList.where((d) => (d['status'] ?? 'Active') == 'Active').length;
 
+    // Navigation targets for each stat card
+    final statNavTargets = <int?>[
+      4,    // Total Students → Students tab
+      1,    // Active Passes → Applications tab
+      1,    // Pending Apps → Applications tab
+      5,    // Today's Revenue → Payments tab
+      3,    // Total Buses → Buses tab
+      null, // Active Drivers → Driver Management (pushed route)
+      5,    // Pending Payments → Payments tab
+      1,    // Expired Passes → Applications tab
+    ];
+
     final stats = <_StatData>[
       _StatData(
         'Total Students',
@@ -194,7 +206,7 @@ class AdminOverviewTab extends ConsumerWidget {
         Icons.people_alt_rounded,
         AppColors.info,
         totalStudents.isLoading,
-        '+12 this month',
+        null, // Bug A1 fixed: removed hardcoded "+12 this month"
       ),
       _StatData(
         'Active Passes',
@@ -274,14 +286,27 @@ class AdminOverviewTab extends ConsumerWidget {
             mainAxisExtent: cardHeight,
           ),
           itemCount: stats.length,
-          itemBuilder: (context, i) => AdminStatCard(
-            label: stats[i].label,
-            value: stats[i].value,
-            icon: stats[i].icon,
-            color: stats[i].color,
-            isLoading: stats[i].isLoading,
-            subtitle: stats[i].subtitle,
-          ),
+          itemBuilder: (context, i) {
+            final navTarget = statNavTargets[i];
+            return GestureDetector(
+              onTap: () {
+                if (navTarget != null) {
+                  ref.read(adminTabProvider.notifier).state = navTarget;
+                } else {
+                  // Active Drivers → push to driver management route
+                  context.push(AppRoutes.driverManagement);
+                }
+              },
+              child: AdminStatCard(
+                label: stats[i].label,
+                value: stats[i].value,
+                icon: stats[i].icon,
+                color: stats[i].color,
+                isLoading: stats[i].isLoading,
+                subtitle: stats[i].subtitle,
+              ),
+            );
+          },
         );
       },
     );
@@ -380,8 +405,17 @@ class AdminOverviewTab extends ConsumerWidget {
         }
 
         if (statusFilter != 'All') {
-          filtered =
-              filtered.where((app) => app['status'] == statusFilter).toList();
+          filtered = filtered.where((app) {
+            final st = (app['status'] ?? app['passStatus'] ?? '').toString();
+            if (statusFilter == 'Pending') {
+              // Bug A4 fixed: match all pending status variants
+              return st == 'Pending' ||
+                  st == 'Payment Pending' ||
+                  st == 'Pending Approval' ||
+                  st == 'Pending Payment';
+            }
+            return st == statusFilter;
+          }).toList();
         }
 
         if (filtered.isEmpty) {

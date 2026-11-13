@@ -47,17 +47,18 @@ class StudentPassHistoryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
     final historyAsync = ref.watch(studentPassHistoryStreamProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text(
           'Pass & Application History',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: theme.colorScheme.surface,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
@@ -65,7 +66,7 @@ class StudentPassHistoryScreen extends ConsumerWidget {
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(color: const Color(0xFFE2E8F0), height: 1),
+          child: Container(color: theme.dividerColor, height: 1),
         ),
       ),
       body: SafeArea(
@@ -120,6 +121,7 @@ class StudentPassHistoryScreen extends ConsumerWidget {
   }
 
   Widget _buildHistoryCard(BuildContext context, Map<String, dynamic> app) {
+    final theme = Theme.of(context);
     final String appId = app['id'] ?? app['applicationId'] ?? 'N/A';
     final String? passNumber = app['passNumber'];
     final String route = app['routeName'] ?? app['route'] ?? 'Bus Route';
@@ -177,7 +179,7 @@ class StudentPassHistoryScreen extends ConsumerWidget {
       },
       borderColor: displayPassStatus == 'ACTIVE'
           ? AppColors.primaryCrimson.withValues(alpha: 0.3)
-          : AppColors.slate200,
+          : theme.colorScheme.outlineVariant,
       isSelected: displayPassStatus == 'ACTIVE',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -195,19 +197,19 @@ class StudentPassHistoryScreen extends ConsumerWidget {
                     passNumber != null && passNumber.isNotEmpty
                         ? passNumber
                         : appId,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
-                      color: AppColors.slate900,
+                      color: theme.colorScheme.onSurface,
                     ),
                   ),
                 ],
               ),
               Text(
                 dateString,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
-                  color: AppColors.slate400,
+                  color: theme.colorScheme.onSurfaceVariant,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -218,16 +220,16 @@ class StudentPassHistoryScreen extends ConsumerWidget {
           // Route & Stop
           Row(
             children: [
-              const Icon(Icons.directions_bus_rounded,
-                  size: 16, color: AppColors.slate500),
+              Icon(Icons.directions_bus_rounded,
+                  size: 16, color: theme.colorScheme.onSurfaceVariant),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   route,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
-                    color: AppColors.slate800,
+                    color: theme.colorScheme.onSurface,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -240,7 +242,7 @@ class StudentPassHistoryScreen extends ConsumerWidget {
             padding: const EdgeInsets.only(left: 22),
             child: Text(
               'Boarding: $boardingStop',
-              style: const TextStyle(fontSize: 12, color: AppColors.slate600),
+              style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
             ),
           ),
           const SizedBox(height: 14),

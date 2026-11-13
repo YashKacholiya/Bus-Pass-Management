@@ -275,10 +275,56 @@ final paymentsListStreamProvider =
           }
         } catch (_) {}
 
+        try {
+          final appsSnap = await FirebaseFirestore.instance
+              .collection('bus_pass_applications')
+              .get();
+          for (final doc in appsSnap.docs) {
+            final data = Map<String, dynamic>.from(doc.data());
+            final pStatus = (data['paymentStatus'] ?? '').toString().trim();
+            final fare = data['fare'] ?? data['amount'] ?? data['passFee'];
+            if (pStatus.isNotEmpty || fare != null) {
+              final txnId = (data['transactionId'] ?? data['paymentId'] ?? '').toString();
+              if (txnId.isEmpty || !paymentsMap.containsKey(txnId)) {
+                if (!paymentsMap.containsKey(doc.id) && !paymentsMap.containsKey('app_${doc.id}')) {
+                  data['id'] = doc.id;
+                  data['paymentStatus'] = pStatus.isNotEmpty ? pStatus : 'Pending';
+                  data['amount'] = fare ?? 0.0;
+                  data['paymentDate'] = data['paymentDate'] ?? data['createdAt'];
+                  data['studentName'] = data['studentName'] ?? data['fullName'];
+                  paymentsMap['app_${doc.id}'] = data;
+                }
+              }
+            }
+          }
+        } catch (_) {}
+
+        try {
+          final passesSnap = await FirebaseFirestore.instance
+              .collection('bus_passes')
+              .get();
+          for (final doc in passesSnap.docs) {
+            final data = Map<String, dynamic>.from(doc.data());
+            final pStatus = (data['paymentStatus'] ?? '').toString().trim();
+            final fare = data['fare'] ?? data['amount'];
+            final txnId = (data['transactionId'] ?? data['paymentId'] ?? '').toString();
+            if (txnId.isEmpty || !paymentsMap.containsKey(txnId)) {
+              if (!paymentsMap.containsKey(doc.id) && !paymentsMap.containsKey('pass_${doc.id}')) {
+                data['id'] = doc.id;
+                data['paymentStatus'] = pStatus.isNotEmpty ? pStatus : 'Paid';
+                data['amount'] = fare ?? 0.0;
+                data['paymentDate'] = data['paymentDate'] ?? data['issuedAt'] ?? data['createdAt'];
+                data['studentName'] = data['studentName'] ?? data['fullName'];
+                paymentsMap['pass_${doc.id}'] = data;
+              }
+            }
+          }
+        } catch (_) {}
+
         final list = paymentsMap.values.toList();
         list.sort((a, b) {
-          final aDate = a['createdAt'] ?? a['paymentDate'];
-          final bDate = b['createdAt'] ?? b['paymentDate'];
+          final aDate = a['createdAt'] ?? a['paymentDate'] ?? a['paidAt'];
+          final bDate = b['createdAt'] ?? b['paymentDate'] ?? b['paidAt'];
           if (aDate == null && bDate == null) return 0;
           if (aDate == null) return 1;
           if (bDate == null) return -1;

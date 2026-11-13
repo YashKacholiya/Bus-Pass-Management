@@ -56,15 +56,23 @@ class _DriverManagementScreenState extends ConsumerState<DriverManagementScreen>
   @override
   Widget build(BuildContext context) {
     final driversAsync = ref.watch(driversListStreamProvider);
+    final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: theme.scaffoldBackgroundColor,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showDriverForm(context),
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Add Driver', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: AppColors.primaryCrimson,
+        foregroundColor: Colors.white,
+      ),
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: theme.colorScheme.surface,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
+          icon: Icon(Icons.arrow_back_rounded, color: theme.colorScheme.onSurface),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Row(
@@ -76,35 +84,19 @@ class _DriverManagementScreenState extends ConsumerState<DriverManagementScreen>
               fit: BoxFit.contain,
             ),
             const SizedBox(width: 10),
-            const Text(
+            Text(
               'Driver Management',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 18,
-                color: Color(0xFF0F172A),
+                color: theme.colorScheme.onSurface,
               ),
             ),
           ],
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12.0),
-            child: TextButton.icon(
-              onPressed: () => _showDriverForm(context),
-              icon: const Icon(Icons.add_rounded, size: 18, color: Colors.white),
-              label: const Text('Add Driver', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-              style: TextButton.styleFrom(
-                backgroundColor: AppColors.primaryCrimson,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              ),
-            ),
-          ),
-        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: const Color(0xFFF1F5F9)),
+          child: Container(height: 1, color: theme.dividerColor),
         ),
       ),
       body: Column(
@@ -237,12 +229,13 @@ class _DriverCard extends StatelessWidget {
     if (status == 'On Leave') statusColor = AppColors.warning;
     if (status == 'Inactive') statusColor = AppColors.error;
 
+    final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFF1F5F9)),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.02),
@@ -304,10 +297,10 @@ class _DriverCard extends StatelessWidget {
                           Expanded(
                             child: Text(
                               name.toString(),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w800,
                                 fontSize: 15,
-                                color: Color(0xFF0F172A),
+                                color: theme.colorScheme.onSurface,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -338,18 +331,18 @@ class _DriverCard extends StatelessWidget {
                         children: [
                           Text(
                             'ID: $driverIdVal',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: Color(0xFF475569),
+                              color: theme.colorScheme.onSurfaceVariant,
                             ),
                           ),
                           const SizedBox(width: 6),
-                          const Text('•', style: TextStyle(color: Color(0xFF94A3B8))),
+                          Text('•', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
                           const SizedBox(width: 6),
                           Text(
                             mobile.toString(),
-                            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
                           ),
                         ],
                       ),
@@ -358,12 +351,12 @@ class _DriverCard extends StatelessWidget {
                       // License Information
                       Row(
                         children: [
-                          const Icon(Icons.badge_outlined, size: 13, color: Color(0xFF94A3B8)),
+                          Icon(Icons.badge_outlined, size: 13, color: theme.colorScheme.onSurfaceVariant),
                           const SizedBox(width: 5),
                           Expanded(
                             child: Text(
                               'Lic: $license',
-                              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                              style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -371,7 +364,7 @@ class _DriverCard extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                      Divider(height: 1, color: theme.dividerColor),
                       const SizedBox(height: 10),
 
                       // Bus & Route details
@@ -385,10 +378,10 @@ class _DriverCard extends StatelessWidget {
                                 Expanded(
                                   child: Text(
                                     busNum.toString(),
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
-                                      color: Color(0xFF334155),
+                                      color: theme.colorScheme.onSurface,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -406,10 +399,10 @@ class _DriverCard extends StatelessWidget {
                                 Expanded(
                                   child: Text(
                                     routeName.toString(),
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
-                                      color: Color(0xFF334155),
+                                      color: theme.colorScheme.onSurface,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -481,15 +474,16 @@ class _DriverDetailsSheetState extends ConsumerState<_DriverDetailsSheet> {
         if (status == 'On Leave') statusColor = AppColors.warning;
         if (status == 'Inactive') statusColor = AppColors.error;
 
+        final theme = Theme.of(context);
         return DraggableScrollableSheet(
           initialChildSize: 0.92,
           minChildSize: 0.6,
           maxChildSize: 0.97,
           builder: (context, scrollController) {
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
               ),
               child: Column(
                 children: [
@@ -502,7 +496,7 @@ class _DriverDetailsSheetState extends ConsumerState<_DriverDetailsSheet> {
                           width: 40,
                           height: 4,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFE2E8F0),
+                            color: theme.dividerColor,
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -533,15 +527,15 @@ class _DriverDetailsSheetState extends ConsumerState<_DriverDetailsSheet> {
                                 children: [
                                   Text(
                                     name.toString(),
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 17,
                                       fontWeight: FontWeight.w800,
-                                      color: Color(0xFF0F172A),
+                                      color: theme.colorScheme.onSurface,
                                     ),
                                   ),
                                   Text(
                                     'Driver ID: $driverIdVal',
-                                    style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                                    style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
                                   ),
                                 ],
                               ),
@@ -555,7 +549,7 @@ class _DriverDetailsSheetState extends ConsumerState<_DriverDetailsSheet> {
                           ],
                         ),
                         const SizedBox(height: 16),
-                        const Divider(height: 1),
+                        Divider(height: 1, color: theme.dividerColor),
                       ],
                     ),
                   ),
@@ -639,12 +633,13 @@ class _DriverDetailsSheetState extends ConsumerState<_DriverDetailsSheet> {
   }
 
   Widget _buildDetailRow(String label, String value, {Color? color}) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF64748B), fontWeight: FontWeight.w500)),
+          Text(label, style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500)),
           const SizedBox(width: 14),
           Expanded(
             child: Text(
@@ -653,7 +648,7 @@ class _DriverDetailsSheetState extends ConsumerState<_DriverDetailsSheet> {
               style: TextStyle(
                 fontSize: 13.5,
                 fontWeight: FontWeight.bold,
-                color: color ?? const Color(0xFF334155),
+                color: color ?? theme.colorScheme.onSurface,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -934,15 +929,16 @@ class _DriverFormSheetState extends ConsumerState<_DriverFormSheet> {
       _assignedRouteId = null;
     }
 
+    final theme = Theme.of(context);
     return DraggableScrollableSheet(
       initialChildSize: 0.92,
       minChildSize: 0.6,
       maxChildSize: 0.97,
       builder: (context, scrollController) {
         return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           ),
           child: Column(
             children: [
@@ -955,7 +951,7 @@ class _DriverFormSheetState extends ConsumerState<_DriverFormSheet> {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE2E8F0),
+                        color: theme.dividerColor,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -981,22 +977,22 @@ class _DriverFormSheetState extends ConsumerState<_DriverFormSheet> {
                           children: [
                             Text(
                               isEdit ? 'Edit Driver Profile' : 'Add New Driver',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF0F172A),
+                                color: theme.colorScheme.onSurface,
                               ),
                             ),
                             Text(
                               isEdit ? 'Update driver fields below' : 'Fill in driver parameters',
-                              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                              style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
                             ),
                           ],
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
-                    const Divider(height: 1),
+                    Divider(height: 1, color: theme.dividerColor),
                   ],
                 ),
               ),
@@ -1270,12 +1266,13 @@ class _DriverFormSheetState extends ConsumerState<_DriverFormSheet> {
   }
 
   InputDecoration _getInputDecoration(String label, {IconData? icon, Widget? customPrefix}) {
+    final theme = Theme.of(context);
     return InputDecoration(
       labelText: label,
-      labelStyle: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-      prefixIcon: customPrefix ?? (icon != null ? Icon(icon, color: const Color(0xFF94A3B8), size: 20) : null),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+      labelStyle: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
+      prefixIcon: customPrefix ?? (icon != null ? Icon(icon, color: theme.colorScheme.onSurfaceVariant, size: 20) : null),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: theme.colorScheme.outlineVariant)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: theme.colorScheme.outlineVariant)),
       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primaryCrimson)),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
     );
@@ -1309,6 +1306,7 @@ class _FormField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return TextFormField(
       controller: controller,
       maxLines: maxLines,
@@ -1317,17 +1315,17 @@ class _FormField extends StatelessWidget {
       validator: validator,
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+        labelStyle: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
         hintText: hint,
-        hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
-        prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 20),
+        hintStyle: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
+        prefixIcon: Icon(icon, color: theme.colorScheme.onSurfaceVariant, size: 20),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          borderSide: BorderSide(color: theme.colorScheme.outlineVariant),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          borderSide: BorderSide(color: theme.colorScheme.outlineVariant),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -1335,7 +1333,7 @@ class _FormField extends StatelessWidget {
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       ),
-      style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A)),
+      style: TextStyle(fontSize: 13.5, color: theme.colorScheme.onSurface),
     );
   }
 }

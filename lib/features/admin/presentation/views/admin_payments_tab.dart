@@ -59,7 +59,21 @@ class _AdminPaymentsTabState extends ConsumerState<AdminPaymentsTab> {
 
             // ── DASHBOARD SUMMARY PANEL ──
             paymentsAsync.when(
-              loading: () => const SizedBox.shrink(),
+              loading: () => SizedBox(
+                height: 104,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  children: [
+                    _buildSummaryCard('Total Revenue', '...', Colors.indigo, Icons.account_balance_wallet_rounded),
+                    _buildSummaryCard("Today's Revenue", '...', Colors.teal, Icons.today_rounded),
+                    _buildSummaryCard('Monthly Revenue', '...', Colors.purple, Icons.calendar_month_rounded),
+                    _buildSummaryCard('Pending Verification', '...', AppColors.warning, Icons.pending_actions_rounded),
+                    _buildSummaryCard('Paid Pass Holders', '...', AppColors.success, Icons.verified_user_rounded),
+                  ],
+                ),
+              ),
               error: (err, _) => const SizedBox.shrink(),
               data: (payments) {
                 // Calculate dynamic metrics
@@ -74,11 +88,20 @@ class _AdminPaymentsTabState extends ConsumerState<AdminPaymentsTab> {
                 int successCount = 0;
 
                 for (final p in payments) {
-                  final status = p['paymentStatus'] ?? 'Pending';
-                  final isSuccess = status == 'Paid' || status == 'Success' || status == 'Successful';
-                  final isPending = status == 'Pending' || status == 'Pending Verification' || status == 'Pending Payment';
+                  final rawStatus = (p['paymentStatus'] ?? p['status'] ?? 'Pending').toString().trim().toLowerCase();
+                  final isSuccess = rawStatus == 'paid' ||
+                      rawStatus == 'success' ||
+                      rawStatus == 'successful' ||
+                      rawStatus == 'completed';
+                  final isPending = rawStatus == 'pending' ||
+                      rawStatus == 'pending verification' ||
+                      rawStatus == 'pending payment' ||
+                      rawStatus == 'submitted_for_verification' ||
+                      rawStatus == 'unpaid' ||
+                      rawStatus == 'created' ||
+                      rawStatus == 'processing';
 
-                  final amountVal = p['amount'];
+                  final amountVal = p['amount'] ?? p['fare'] ?? p['passFee'] ?? p['totalAmount'];
                   double amount = 0.0;
                   if (amountVal is num) {
                     amount = amountVal.toDouble();
@@ -86,10 +109,12 @@ class _AdminPaymentsTabState extends ConsumerState<AdminPaymentsTab> {
                     amount = double.tryParse(amountVal) ?? 0.0;
                   }
 
-                  final dateField = p['createdAt'] ?? p['paymentDate'];
+                  final dateField = p['createdAt'] ?? p['paymentDate'] ?? p['paidAt'] ?? p['timestamp'];
                   DateTime? dt;
                   if (dateField is Timestamp) {
                     dt = dateField.toDate();
+                  } else if (dateField is DateTime) {
+                    dt = dateField;
                   } else if (dateField is String) {
                     dt = DateTime.tryParse(dateField);
                   }

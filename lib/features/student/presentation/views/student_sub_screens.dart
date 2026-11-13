@@ -2028,7 +2028,13 @@ class PaymentHistoryScreen extends ConsumerWidget {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary),
-          onPressed: () => context.go(AppRoutes.studentDashboard),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go(AppRoutes.studentDashboard);
+            }
+          },
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -2040,7 +2046,6 @@ class PaymentHistoryScreen extends ConsumerWidget {
           stream: FirebaseFirestore.instance
               .collection('receipts')
               .where('uid', isEqualTo: user.uid)
-              .orderBy('paymentDate', descending: true)
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -2050,7 +2055,21 @@ class PaymentHistoryScreen extends ConsumerWidget {
               return Center(child: Text('Error loading history: ${snapshot.error}', style: const TextStyle(color: AppColors.error)));
             }
             
-            final docs = snapshot.data?.docs ?? [];
+            final docs = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(snapshot.data?.docs ?? []);
+            docs.sort((a, b) {
+              final aData = a.data();
+              final bData = b.data();
+              final dynamic aDate = aData['paymentDate'] ?? aData['createdAt'];
+              final dynamic bDate = bData['paymentDate'] ?? bData['createdAt'];
+              if (aDate == null && bDate == null) return 0;
+              if (aDate == null) return 1;
+              if (bDate == null) return -1;
+              if (aDate is Timestamp && bDate is Timestamp) {
+                return bDate.compareTo(aDate);
+              }
+              return bDate.toString().compareTo(aDate.toString());
+            });
+
             if (docs.isEmpty) {
               return const Center(
                 child: Padding(

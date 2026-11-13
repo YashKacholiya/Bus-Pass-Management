@@ -79,21 +79,21 @@ class _AdminBusesTabState extends ConsumerState<AdminBusesTab>
                       ),
                     ),
                     const SizedBox(height: 24),
-                    const Text(
+                    Text(
                       'No buses available',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 18,
-                        color: Color(0xFF0F172A),
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'Get started by registering the first bus in your fleet.',
                       style: TextStyle(
                         fontSize: 13,
-                        color: Color(0xFF64748B),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -242,14 +242,14 @@ class _AdminBusesTabState extends ConsumerState<AdminBusesTab>
                         selectedColor: chipColor.withOpacity(0.12),
                         checkmarkColor: chipColor,
                         labelStyle: TextStyle(
-                          color: selected ? chipColor : const Color(0xFF64748B),
+                          color: selected ? chipColor : Theme.of(context).colorScheme.onSurfaceVariant,
                           fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                           fontSize: 13,
                         ),
                         side: BorderSide(
-                          color: selected ? chipColor : const Color(0xFFE2E8F0),
+                          color: selected ? chipColor : Theme.of(context).colorScheme.outlineVariant,
                         ),
-                        backgroundColor: Colors.white,
+                        backgroundColor: Theme.of(context).colorScheme.surface,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
                         ),
@@ -577,15 +577,16 @@ class _BusFormSheetState extends State<_BusFormSheet> {
       _assignedRouteId = null;
     }
 
+    final theme = Theme.of(context);
     return DraggableScrollableSheet(
       initialChildSize: 0.92,
       minChildSize: 0.6,
       maxChildSize: 0.97,
       builder: (context, scrollController) {
         return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           ),
           child: Column(
             children: [
@@ -598,7 +599,7 @@ class _BusFormSheetState extends State<_BusFormSheet> {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE2E8F0),
+                        color: theme.dividerColor,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -624,25 +625,25 @@ class _BusFormSheetState extends State<_BusFormSheet> {
                           children: [
                             Text(
                               isEdit ? 'Edit Bus details' : 'Add New Bus',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF0F172A),
+                                color: theme.colorScheme.onSurface,
                               ),
                             ),
                             Text(
                               isEdit
                                   ? 'Update driver and operational details'
                                   : 'Register a new bus in the fleet',
-                              style: const TextStyle(
-                                  fontSize: 12, color: Color(0xFF64748B)),
+                              style: TextStyle(
+                                  fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
                             ),
                           ],
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
-                    const Divider(height: 1),
+                    Divider(height: 1, color: theme.dividerColor),
                   ],
                 ),
               ),
@@ -880,6 +881,7 @@ class _BusFormSheetState extends State<_BusFormSheet> {
   }
 
   Widget _buildStatusTile(String val, String desc, Color color) {
+    final theme = Theme.of(context);
     final selected = _status == val;
     return InkWell(
       onTap: () => setState(() => _status = val),
@@ -891,12 +893,12 @@ class _BusFormSheetState extends State<_BusFormSheet> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: selected ? color.withOpacity(0.12) : const Color(0xFFF1F5F9),
+                color: selected ? color.withOpacity(0.12) : theme.colorScheme.surfaceContainerHighest,
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 selected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
-                color: selected ? color : const Color(0xFF94A3B8),
+                color: selected ? color : theme.colorScheme.onSurfaceVariant,
                 size: 18,
               ),
             ),
@@ -910,12 +912,12 @@ class _BusFormSheetState extends State<_BusFormSheet> {
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
-                      color: selected ? color : const Color(0xFF334155),
+                      color: selected ? color : theme.colorScheme.onSurface,
                     ),
                   ),
                   Text(
                     desc,
-                    style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                    style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
                   ),
                 ],
               ),
@@ -944,19 +946,20 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Row(
       children: [
         if (customIcon != null)
           customIcon!
         else if (icon != null)
-          Icon(icon!, size: 16, color: const Color(0xFF64748B)),
+          Icon(icon!, size: 16, color: theme.colorScheme.onSurfaceVariant),
         const SizedBox(width: 8),
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.bold,
-            color: Color(0xFF475569),
+            color: theme.colorScheme.onSurfaceVariant,
             letterSpacing: 0.3,
           ),
         ),
@@ -992,6 +995,7 @@ class _FormField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return TextFormField(
       controller: controller,
       enabled: enabled,
@@ -1001,22 +1005,22 @@ class _FormField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
-        labelStyle: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-        prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 20),
+        hintStyle: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
+        labelStyle: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
+        prefixIcon: Icon(icon, color: theme.colorScheme.onSurfaceVariant, size: 20),
         filled: !enabled,
-        fillColor: const Color(0xFFF8FAFC),
+        fillColor: enabled ? theme.colorScheme.surface : theme.colorScheme.surfaceContainerHighest,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          borderSide: BorderSide(color: theme.colorScheme.outlineVariant),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          borderSide: BorderSide(color: theme.colorScheme.outlineVariant),
         ),
         disabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          borderSide: BorderSide(color: theme.colorScheme.outlineVariant),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -1026,7 +1030,7 @@ class _FormField extends StatelessWidget {
       ),
       style: TextStyle(
         fontSize: 14,
-        color: enabled ? const Color(0xFF0F172A) : const Color(0xFF64748B),
+        color: enabled ? theme.colorScheme.onSurface : theme.colorScheme.onSurfaceVariant,
       ),
     );
   }
@@ -1165,7 +1169,7 @@ class _BusCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          Divider(height: 1, color: theme.dividerColor),
           const SizedBox(height: 14),
 
           // Details Section
@@ -1177,20 +1181,20 @@ class _BusCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'DRIVER',
                       style: TextStyle(
                         fontSize: 9,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF94A3B8),
+                        color: theme.colorScheme.onSurfaceVariant,
                         letterSpacing: 0.5,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(Icons.person_outline_rounded,
-                            size: 14, color: Color(0xFF64748B)),
+                        Icon(Icons.person_outline_rounded,
+                            size: 14, color: theme.colorScheme.onSurfaceVariant),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
@@ -1209,8 +1213,8 @@ class _BusCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Row(
                       children: [
-                        const Icon(Icons.phone_android_rounded,
-                            size: 14, color: Color(0xFF64748B)),
+                        Icon(Icons.phone_android_rounded,
+                            size: 14, color: theme.colorScheme.onSurfaceVariant),
                         const SizedBox(width: 6),
                         Text(
                           driverPhone.toString(),
@@ -1228,27 +1232,27 @@ class _BusCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'CAPACITY',
                     style: TextStyle(
                       fontSize: 9,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF94A3B8),
+                      color: theme.colorScheme.onSurfaceVariant,
                       letterSpacing: 0.5,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      const Icon(Icons.airline_seat_recline_normal_rounded,
-                          size: 14, color: Color(0xFF64748B)),
+                      Icon(Icons.airline_seat_recline_normal_rounded,
+                          size: 14, color: theme.colorScheme.onSurfaceVariant),
                       const SizedBox(width: 6),
                       Text(
                         '$capacity Seats',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF334155),
+                          color: theme.colorScheme.onSurface,
                         ),
                       ),
                     ],
@@ -1259,7 +1263,7 @@ class _BusCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          Divider(height: 1, color: theme.dividerColor),
           const SizedBox(height: 14),
 
           // Assigned Route Row + Actions
@@ -1282,8 +1286,8 @@ class _BusCard extends StatelessWidget {
                           fontSize: 12.5,
                           fontWeight: FontWeight.w600,
                           color: routeInfo != null && routeInfo!.isNotEmpty
-                              ? const Color(0xFF0F172A)
-                              : const Color(0xFF94A3B8),
+                              ? theme.colorScheme.onSurface
+                              : theme.colorScheme.onSurfaceVariant,
                           fontStyle: routeInfo != null && routeInfo!.isNotEmpty
                               ? FontStyle.normal
                               : FontStyle.italic,

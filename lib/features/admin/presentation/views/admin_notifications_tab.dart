@@ -24,16 +24,17 @@ class _AdminNotificationsTabState extends ConsumerState<AdminNotificationsTab> {
   @override
   Widget build(BuildContext context) {
     final notificationsAsync = ref.watch(notificationsStreamProvider);
+    final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ── HEADER ──
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 24, 20, 0),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -42,13 +43,13 @@ class _AdminNotificationsTabState extends ConsumerState<AdminNotificationsTab> {
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F172A),
+                      color: theme.colorScheme.onSurface,
                     ),
                   ),
-                  SizedBox(height: 6),
+                  const SizedBox(height: 6),
                   Text(
                     'Broadcast alerts, schedule reminders, and track announcement delivery.',
-                    style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                    style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
                   ),
                 ],
               ),
@@ -61,9 +62,9 @@ class _AdminNotificationsTabState extends ConsumerState<AdminNotificationsTab> {
               child: Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: theme.colorScheme.surface,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFF1F5F9)),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
                 ),
                 child: Column(
                   children: [
@@ -334,12 +335,13 @@ class _NotificationCard extends StatelessWidget {
         break;
     }
 
+    final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFF1F5F9)),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.01),
@@ -382,10 +384,10 @@ class _NotificationCard extends StatelessWidget {
                               title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF0F172A),
+                                color: theme.colorScheme.onSurface,
                               ),
                             ),
                           ),
@@ -413,30 +415,30 @@ class _NotificationCard extends StatelessWidget {
                         message,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.3),
+                        style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant, height: 1.3),
                       ),
                       const SizedBox(height: 10),
                       // Meta details row
                       Row(
                         children: [
-                          Icon(Icons.people_alt_rounded, size: 11, color: Colors.blueGrey.shade400),
+                          Icon(Icons.people_alt_rounded, size: 11, color: theme.colorScheme.onSurfaceVariant),
                           const SizedBox(width: 4),
                           Flexible(
                             child: Text(
                               'To: $targetName',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600, fontWeight: FontWeight.w600),
+                              style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600),
                             ),
                           ),
                           const SizedBox(width: 16),
-                          Icon(Icons.calendar_month_rounded, size: 11, color: Colors.blueGrey.shade400),
+                          Icon(Icons.calendar_month_rounded, size: 11, color: theme.colorScheme.onSurfaceVariant),
                           const SizedBox(width: 4),
                           Text(
                             status == 'Scheduled'
                                 ? 'Schedule: ${_formatDate(scheduledAt)}'
                                 : 'Sent: ${_formatDate(scheduledAt)}',
-                            style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600, fontWeight: FontWeight.w600),
+                            style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600),
                           ),
                         ],
                       ),
@@ -497,11 +499,12 @@ class _NotificationDetailsSheet extends StatelessWidget {
 
     final maxHeight = MediaQuery.of(context).size.height * 0.85;
 
+    final theme = Theme.of(context);
     return Container(
       constraints: BoxConstraints(maxHeight: maxHeight),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
@@ -516,7 +519,7 @@ class _NotificationDetailsSheet extends StatelessWidget {
               width: 38,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFFE2E8F0),
+                color: theme.dividerColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -527,9 +530,9 @@ class _NotificationDetailsSheet extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 'Alert Details',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -549,13 +552,13 @@ class _NotificationDetailsSheet extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          Divider(height: 1, color: theme.dividerColor),
           const SizedBox(height: 20),
 
           // Title
           Text(
             title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: theme.colorScheme.onSurface),
           ),
           const SizedBox(height: 12),
 
@@ -564,23 +567,23 @@ class _NotificationDetailsSheet extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
+              color: theme.colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFF1F5F9)),
+              border: Border.all(color: theme.colorScheme.outlineVariant),
             ),
             child: Text(
               message,
-              style: const TextStyle(fontSize: 13, color: Color(0xFF334155), height: 1.4),
+              style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface, height: 1.4),
             ),
           ),
           const SizedBox(height: 20),
 
           // Details grid
-          _buildDetailRow('Alert Type', type),
-          _buildDetailRow('Target Group', targetType),
-          _buildDetailRow('Recipient Scope', targetName),
-          if (isScheduled) _buildDetailRow('Scheduled Delivery', _formatDate(scheduledAt)),
-          _buildDetailRow('Creation Timestamp', _formatDate(createdAt)),
+          _buildDetailRow(context, 'Alert Type', type),
+          _buildDetailRow(context, 'Target Group', targetType),
+          _buildDetailRow(context, 'Recipient Scope', targetName),
+          if (isScheduled) _buildDetailRow(context, 'Scheduled Delivery', _formatDate(scheduledAt)),
+          _buildDetailRow(context, 'Creation Timestamp', _formatDate(createdAt)),
           const SizedBox(height: 28),
 
           // Action Controls
@@ -623,7 +626,7 @@ class _NotificationDetailsSheet extends StatelessWidget {
                 icon: const Icon(Icons.check_rounded, size: 18, color: Colors.white),
                 label: const Text('Dismiss', style: TextStyle(color: Colors.white)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0F172A),
+                  backgroundColor: theme.colorScheme.onSurface,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
@@ -636,14 +639,15 @@ class _NotificationDetailsSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
+  Widget _buildDetailRow(BuildContext context, String label, String value) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-          Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+          Text(label, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+          Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
         ],
       ),
     );
@@ -679,10 +683,11 @@ class _StudentPickerSheetState extends State<_StudentPickerSheet> {
             return name.contains(search) || prn.contains(search) || email.contains(search);
           }).toList();
 
+    final theme = Theme.of(context);
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       height: MediaQuery.of(context).size.height * 0.7,
@@ -692,14 +697,14 @@ class _StudentPickerSheetState extends State<_StudentPickerSheet> {
             width: 38,
             height: 4,
             decoration: BoxDecoration(
-              color: const Color(0xFFE2E8F0),
+              color: theme.dividerColor,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'Select Recipient Student',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF0F172A)),
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: theme.colorScheme.onSurface),
           ),
           const SizedBox(height: 14),
           AdminSearchBar(
@@ -710,7 +715,7 @@ class _StudentPickerSheetState extends State<_StudentPickerSheet> {
           const SizedBox(height: 14),
           Expanded(
             child: filtered.isEmpty
-                ? const Center(child: Text('No students found matching query.', style: TextStyle(color: Color(0xFF64748B))))
+                ? Center(child: Text('No students found matching query.', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)))
                 : ListView.builder(
                     physics: const BouncingScrollPhysics(),
                     itemCount: filtered.length,
@@ -720,8 +725,8 @@ class _StudentPickerSheetState extends State<_StudentPickerSheet> {
                       final prn = student['prn'] ?? 'N/A';
                       final course = student['course'] ?? 'N/A';
                       return ListTile(
-                        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                        subtitle: Text('PRN: $prn | $course', style: const TextStyle(fontSize: 12)),
+                        title: Text(name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: theme.colorScheme.onSurface)),
+                        subtitle: Text('PRN: $prn | $course', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
                         leading: CircleAvatar(
                           backgroundColor: AppColors.primaryCrimson.withOpacity(0.08),
                           foregroundColor: AppColors.primaryCrimson,
@@ -988,10 +993,11 @@ class _ComposeNotificationSheetState extends ConsumerState<_ComposeNotificationS
 
     final isEditMode = widget.initialNotification != null;
 
+    final theme = Theme.of(context);
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.fromLTRB(24, 16, 24, MediaQuery.of(context).viewInsets.bottom + 24),
       child: SingleChildScrollView(
@@ -1004,7 +1010,7 @@ class _ComposeNotificationSheetState extends ConsumerState<_ComposeNotificationS
                 width: 38,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE2E8F0),
+                  color: theme.dividerColor,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -1012,15 +1018,17 @@ class _ComposeNotificationSheetState extends ConsumerState<_ComposeNotificationS
             const SizedBox(height: 16),
             Text(
               isEditMode ? 'Edit Scheduled Alert' : 'Compose Alert',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF0F172A)),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: theme.colorScheme.onSurface),
             ),
             const SizedBox(height: 20),
 
             // Form inputs
-            const Text('Alert Type', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF475569))),
+            Text('Alert Type', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurfaceVariant)),
             const SizedBox(height: 6),
             DropdownButtonFormField<String>(
               value: _type,
+              dropdownColor: theme.colorScheme.surface,
+              style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 14),
               decoration: _inputDecoration(),
               items: const [
                 DropdownMenuItem(value: 'General', child: Text('General Announcement')),
@@ -1037,10 +1045,12 @@ class _ComposeNotificationSheetState extends ConsumerState<_ComposeNotificationS
             ),
             const SizedBox(height: 16),
 
-            const Text('Target Audience Group', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF475569))),
+            Text('Target Audience Group', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurfaceVariant)),
             const SizedBox(height: 6),
             DropdownButtonFormField<String>(
               value: _targetType,
+              dropdownColor: theme.colorScheme.surface,
+              style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 14),
               decoration: _inputDecoration(),
               items: const [
                 DropdownMenuItem(value: 'All Students', child: Text('All Students')),
@@ -1062,7 +1072,7 @@ class _ComposeNotificationSheetState extends ConsumerState<_ComposeNotificationS
 
             // Target Group conditional input
             if (_targetType == 'Specific Route') ...[
-              const Text('Select Route', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF475569))),
+              Text('Select Route', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurfaceVariant)),
               const SizedBox(height: 6),
               routesAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
@@ -1070,6 +1080,8 @@ class _ComposeNotificationSheetState extends ConsumerState<_ComposeNotificationS
                 data: (routes) {
                   return DropdownButtonFormField<String>(
                     value: routes.any((r) => r['id'] == _targetId) ? _targetId : null,
+                    dropdownColor: theme.colorScheme.surface,
+                    style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 14),
                     decoration: _inputDecoration(),
                     items: routes.map((r) {
                       return DropdownMenuItem<String>(
@@ -1091,7 +1103,7 @@ class _ComposeNotificationSheetState extends ConsumerState<_ComposeNotificationS
               ),
               const SizedBox(height: 16),
             ] else if (_targetType == 'Specific Bus') ...[
-              const Text('Select Bus', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF475569))),
+              Text('Select Bus', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurfaceVariant)),
               const SizedBox(height: 6),
               busesAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
@@ -1099,6 +1111,8 @@ class _ComposeNotificationSheetState extends ConsumerState<_ComposeNotificationS
                 data: (buses) {
                   return DropdownButtonFormField<String>(
                     value: buses.any((b) => b['id'] == _targetId) ? _targetId : null,
+                    dropdownColor: theme.colorScheme.surface,
+                    style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 14),
                     decoration: _inputDecoration(),
                     items: buses.map((b) {
                       return DropdownMenuItem<String>(
@@ -1120,7 +1134,7 @@ class _ComposeNotificationSheetState extends ConsumerState<_ComposeNotificationS
               ),
               const SizedBox(height: 16),
             ] else if (_targetType == 'Individual Student') ...[
-              const Text('Select Student', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF475569))),
+              Text('Select Student', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurfaceVariant)),
               const SizedBox(height: 6),
               studentsAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
@@ -1130,7 +1144,7 @@ class _ComposeNotificationSheetState extends ConsumerState<_ComposeNotificationS
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      border: Border.all(color: theme.colorScheme.outlineVariant),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: InkWell(
@@ -1138,8 +1152,8 @@ class _ComposeNotificationSheetState extends ConsumerState<_ComposeNotificationS
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(_targetName ?? 'Tap to pick student', style: TextStyle(color: _targetName != null ? const Color(0xFF0F172A) : const Color(0xFF94A3B8))),
-                          const Icon(Icons.arrow_drop_down, color: Color(0xFF64748B)),
+                          Text(_targetName ?? 'Tap to pick student', style: TextStyle(color: _targetName != null ? theme.colorScheme.onSurface : theme.colorScheme.onSurfaceVariant)),
+                          Icon(Icons.arrow_drop_down, color: theme.colorScheme.onSurfaceVariant),
                         ],
                       ),
                     ),
@@ -1150,20 +1164,22 @@ class _ComposeNotificationSheetState extends ConsumerState<_ComposeNotificationS
             ],
 
             // Title
-            const Text('Alert Title', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF475569))),
+            Text('Alert Title', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurfaceVariant)),
             const SizedBox(height: 6),
             TextField(
               controller: _titleController,
+              style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 14),
               decoration: _inputDecoration(hint: 'Enter alert title'),
             ),
             const SizedBox(height: 16),
 
             // Message
-            const Text('Message Body', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF475569))),
+            Text('Message Body', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurfaceVariant)),
             const SizedBox(height: 6),
             TextField(
               controller: _msgController,
               maxLines: 4,
+              style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 14),
               decoration: _inputDecoration(hint: 'Compose alert message...'),
             ),
             const SizedBox(height: 20),
@@ -1172,11 +1188,11 @@ class _ComposeNotificationSheetState extends ConsumerState<_ComposeNotificationS
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Column(
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Schedule Delivery', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                    Text('Determine date/time of alert broadcast', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                    Text('Schedule Delivery', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+                    Text('Determine date/time of alert broadcast', style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
                   ],
                 ),
                 Switch.adaptive(
@@ -1200,8 +1216,8 @@ class _ComposeNotificationSheetState extends ConsumerState<_ComposeNotificationS
                       icon: const Icon(Icons.calendar_month_rounded, size: 16),
                       label: Text(_scheduledDate == null ? 'Pick Date' : '${_scheduledDate!.day}/${_scheduledDate!.month}/${_scheduledDate!.year}'),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF475569),
-                        side: const BorderSide(color: Color(0xFFE2E8F0)),
+                        foregroundColor: theme.colorScheme.onSurface,
+                        side: BorderSide(color: theme.colorScheme.outlineVariant),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
@@ -1214,8 +1230,8 @@ class _ComposeNotificationSheetState extends ConsumerState<_ComposeNotificationS
                       icon: const Icon(Icons.access_time_rounded, size: 16),
                       label: Text(_scheduledTime == null ? 'Pick Time' : _scheduledTime!.format(context)),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF475569),
-                        side: const BorderSide(color: Color(0xFFE2E8F0)),
+                        foregroundColor: theme.colorScheme.onSurface,
+                        side: BorderSide(color: theme.colorScheme.outlineVariant),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
@@ -1254,11 +1270,12 @@ class _ComposeNotificationSheetState extends ConsumerState<_ComposeNotificationS
   }
 
   InputDecoration _inputDecoration({String? hint}) {
+    final theme = Theme.of(context);
     return InputDecoration(
       hintText: hint,
-      hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+      hintStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: theme.colorScheme.outlineVariant)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: theme.colorScheme.outlineVariant)),
       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primaryCrimson)),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
     );

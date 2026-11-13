@@ -1,4 +1,4 @@
-﻿// ignore_for_file: deprecated_member_use, use_build_context_synchronously
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -57,28 +57,36 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
     final isMobile = MediaQuery.of(context).size.width < 900;
 
-    return Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: isMobile ? _buildMobileAppBar(context, currentTab, theme) : null,
-      drawer: isMobile ? Drawer(backgroundColor: theme.colorScheme.surface, child: _AdminDrawer(currentTab: currentTab, onNavigate: (i) => _navigate(ref, context, i, true), onLogout: () => _handleLogout(context))) : null,
-      body: SafeArea(
-        child: Row(
-          children: [
-            if (!isMobile) ...[
-              SizedBox(width: 260, child: Container(color: theme.colorScheme.surface, child: _AdminDrawer(currentTab: currentTab, onNavigate: (i) => _navigate(ref, context, i, false), onLogout: () => _handleLogout(context)))),
-              Container(width: 1, color: theme.dividerColor),
-            ],
-            Expanded(
-              child: Container(
-                color: theme.scaffoldBackgroundColor,
-                child: Column(children: [
-                  if (!isMobile) _buildDesktopHeader(context, user.fullName),
-                  Expanded(child: AnimatedSwitcher(duration: const Duration(milliseconds: 220), transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child), child: _buildTabContent(currentTab))),
-                ]),
+    return PopScope(
+      canPop: currentTab == 0,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && currentTab != 0) {
+          ref.read(adminTabProvider.notifier).state = 0;
+        }
+      },
+      child: Scaffold(
+        key: _scaffoldKey,
+        backgroundColor: theme.scaffoldBackgroundColor,
+        appBar: isMobile ? _buildMobileAppBar(context, currentTab, theme) : null,
+        drawer: isMobile ? Drawer(backgroundColor: theme.colorScheme.surface, child: _AdminDrawer(currentTab: currentTab, onNavigate: (i) => _navigate(ref, context, i, true), onLogout: () => _handleLogout(context))) : null,
+        body: SafeArea(
+          child: Row(
+            children: [
+              if (!isMobile) ...[
+                SizedBox(width: 260, child: Container(color: theme.colorScheme.surface, child: _AdminDrawer(currentTab: currentTab, onNavigate: (i) => _navigate(ref, context, i, false), onLogout: () => _handleLogout(context)))),
+                Container(width: 1, color: theme.dividerColor),
+              ],
+              Expanded(
+                child: Container(
+                  color: theme.scaffoldBackgroundColor,
+                  child: Column(children: [
+                    if (!isMobile) _buildDesktopHeader(context, user.fullName),
+                    Expanded(child: AnimatedSwitcher(duration: const Duration(milliseconds: 220), transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child), child: _buildTabContent(currentTab))),
+                  ]),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
